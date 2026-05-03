@@ -33,7 +33,7 @@ def generate_random_data():
     values.sort(reverse=True) # I treemap funzionano meglio ordinati
     
     # Generazione etichette casuali di lunghezza variabile
-    labels = [get_random_string(random.randint(3, 10)) for _ in range(num_items)]
+    labels = [get_random_string(random.randint(1, 3)) for _ in range(num_items)]
     
     return values, labels
 
@@ -60,7 +60,7 @@ def generate_treemap_dataset():
         'Set1', 'Set2', 'Set3', 'tab10', 'tab20', 'tab20b', 'tab20c'
     ]
 
-    for i in range(3000, num_charts):
+    for i in range(0, num_charts):
         values, labels = generate_random_data()
         
         # 1. Variazione Aspect Ratio (Dimensioni immagine)
@@ -119,7 +119,7 @@ def generate_treemap_dataset():
         fig.patch.set_facecolor(random.choice(['white', 'black', 'gray', '#f0f0f0']))
 
         # Salvataggio
-        filename = os.path.join(output_dir, f"treemap_{i:05d}.png")
+        filename = os.path.join(output_dir, f"treemap_{i:04d}.png")
         plt.savefig(filename, bbox_inches='tight', dpi=random.choice([72, 100, 150]))
         plt.close(fig) # Fondamentale per liberare memoria
 

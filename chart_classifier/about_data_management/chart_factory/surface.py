@@ -236,7 +236,7 @@ def main():
         print(f"I file saranno salvati in: {output_dir}/\n")
         
         # Genera i grafici
-        for i in range(3000, num_charts):
+        for i in range(0, num_charts):
             output_path = os.path.join(output_dir, f"surface_chart_3d_{i+1:05d}.png")
             create_3d_surface_chart(output_path, i)
         
