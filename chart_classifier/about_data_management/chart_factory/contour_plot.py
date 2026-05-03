@@ -60,7 +60,7 @@ def generate_contour_dataset(num_plots):
     
     print(f"Generazione di {num_plots} contour plots...")
     
-    for i in range(4000, num_plots):
+    for i in range(0, num_plots):
         # Dimensioni casuali della figura
         figsize = (random.uniform(6, 12), random.uniform(6, 12))
         fig, ax = plt.subplots(figsize=figsize, dpi=random.choice([80, 100, 150, 200]))

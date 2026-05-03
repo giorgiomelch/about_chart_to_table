@@ -336,7 +336,7 @@ def main():
     print(f"\nGenerazione di {n_grafici} istogrammi in corso...")
     print(f"Directory output: {output_dir.absolute()}\n")
     
-    for i in range(3580 , n_grafici):
+    for i in range(0 , n_grafici):
         filename = crea_istogramma(i, output_dir)
         if (i + 1) % 10 == 0 or i == n_grafici - 1:
             print(f"Generati: {i + 1}/{n_grafici}")

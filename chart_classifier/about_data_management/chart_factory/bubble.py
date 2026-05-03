@@ -355,7 +355,7 @@ def generate_dataset(n_charts, output_dir='bubble_charts_dataset'):
     print(f"Generazione di {n_charts} bubble charts...")
     print(f"Salvando in: {output_dir}/")
     
-    for i in range(2880, n_charts):
+    for i in range(0, n_charts):
         try:
             generate_bubble_chart(output_dir, i)
             if (i + 1) % 10 == 0:

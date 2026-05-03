@@ -204,7 +204,7 @@ def main():
         print(f"\nGenerazione di {num_plots} quiver plots in corso...")
         print("-" * 60)
         
-        for i in range(3730 , num_plots):
+        for i in range(0 , num_plots):
             create_quiver_plot(i)
             if (i + 1) % 10 == 0:
                 print(f"Progresso: {i + 1}/{num_plots} grafici completati")
