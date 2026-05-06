@@ -62,6 +62,69 @@ def load_ground_truth(path: str | Path) -> Dict[str, List[dict]]:
     return result
 
 
+def load_coco_predictions(
+    predictions_path: str | Path,
+    gt_path: str | Path,
+    score_threshold: float = 0.0,
+) -> Dict[str, List[dict]]:
+    """
+    Carica predizioni in formato COCO (lista di {image_id, category_id, bbox, score})
+    e le converte nel formato interno {filename: [{bbox: [x%, y%, w%, h%], label, score}]}.
+
+    Il mapping image_id→filename e le dimensioni immagine vengono estratti dal
+    ground truth LabelStudio (usa inner_id come image_id).
+
+    Args:
+        predictions_path: file JSON con predizioni COCO
+        gt_path:          file JSON ground truth LabelStudio (per il mapping id→filename+dims)
+        score_threshold:  filtra predizioni con score < soglia
+
+    Returns:
+        dict  filename → lista di {"bbox": [x%, y%, w%, h%], "label": "detection", "score": float}
+    """
+    with open(gt_path, encoding="utf-8") as f:
+        gt_data = json.load(f)
+
+    # inner_id → (filename, original_width, original_height)
+    id_to_meta: dict = {}
+    for task in gt_data:
+        fname = _filename_from_url(task["data"]["image"])
+        inner_id = task["inner_id"]
+        w = h = None
+        anns = task.get("annotations", [])
+        if anns and anns[0].get("result"):
+            r = anns[0]["result"][0]
+            w = r.get("original_width")
+            h = r.get("original_height")
+        id_to_meta[inner_id] = (fname, w, h)
+
+    # inizializza risultato con tutte le immagini GT (anche senza predizioni)
+    result: Dict[str, List[dict]] = {meta[0]: [] for meta in id_to_meta.values()}
+
+    with open(predictions_path, encoding="utf-8") as f:
+        preds = json.load(f)
+
+    for pred in preds:
+        if pred["score"] < score_threshold:
+            continue
+        image_id = pred["image_id"]
+        meta = id_to_meta.get(image_id)
+        if meta is None:
+            continue
+        fname, img_w, img_h = meta
+        if img_w is None or img_h is None:
+            continue
+        x_px, y_px, w_px, h_px = pred["bbox"]
+        result[fname].append({
+            "bbox":  [x_px / img_w * 100, y_px / img_h * 100,
+                      w_px / img_w * 100, h_px / img_h * 100],
+            "label": "detection",
+            "score": pred["score"],
+        })
+
+    return result
+
+
 def load_predictions(path: str | Path) -> Dict[str, List[dict]]:
     """
     Carica le predizioni da un file JSON in formato LabelStudio.
