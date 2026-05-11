@@ -236,6 +236,7 @@ BUBBLE_SCHEMA = {
             "data_points"]
     }
 }
+
 HEATMAP_SCHEMA = {
     "name": "heatmap_schema",
     "schema": {
@@ -245,17 +246,19 @@ HEATMAP_SCHEMA = {
             "chart_title": {"anyOf": [{"type": "string"}, {"type": "null"}]},
             "x_axis_label": {"anyOf": [{"type": "string"}, {"type": "null"}]},
             "y_axis_label": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-            "data_points": {
+            "x_categories": {
+                "type": "array",
+                "items": {"anyOf": [{"type": "string"}, {"type": "number"}]}
+            },
+            "y_categories": {
+                "type": "array",
+                "items": {"anyOf": [{"type": "string"}, {"type": "number"}]}
+            },
+            "matrix": {
                 "type": "array",
                 "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "x_value": {"anyOf": [{"type": "string"}, {"type": "number"}]},
-                        "y_value": {"anyOf": [{"type": "string"}, {"type": "number"}]},
-                        "cell_value": {"anyOf": [{"type": "string"}, {"type": "number"}, {"type": "null"}]}
-                    },
-                    "required": ["x_value", "y_value"]
+                    "type": "array",
+                    "items": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "null"}]}
                 }
             }
         },
@@ -263,9 +266,13 @@ HEATMAP_SCHEMA = {
             "chart_title",
             "x_axis_label",
             "y_axis_label",
-            "data_points"]
+            "x_categories",
+            "y_categories",
+            "matrix"
+        ]
     }
 }
+
 SCHEMA2CHARTCLASS = {
     "area": AREA_LINE_BAR_HISTOGRAM_SCHEMA,
     "line": AREA_LINE_BAR_HISTOGRAM_SCHEMA,
