@@ -1,19 +1,22 @@
 """
 HTML report generator for the sota_chart_to_table benchmark.
 
-Uses RMS (rms_metric.py) instead of the old table_datapoints_precision_recall.
-Prediction loading and normalisation are shared with evaluate.py.
-
-Layout: 3-column grid. Each model block has a unique accent colour.
-Tables scroll horizontally to avoid text overlap.
-Display values are always raw (un-normalised); metric values use normalised data.
+Shows parsed rows (GT table) and per-row similarity (match table) for each image.
+Uses compute_rms(debug=True) from the new chart_types / rms API.
 """
 
 import base64
 import copy
 import json
+import os
+import sys
+import warnings
 from pathlib import Path
-from typing import Any
+
+# Allow running directly as: python src/evaluation/generate_reports.py
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from src.evaluation.evaluate import (
     estrai_basi,
@@ -21,15 +24,11 @@ from src.evaluation.evaluate import (
     load_prediction,
     normalizza_valori,
 )
-from src.evaluation.rms_metric import (
-    BubbleVal,
-    Mapping,
-    ScatterVal,
-    StructuredVal,
-    compute_rms_detailed,
+from src.evaluation.rms import compute_rms
+from src.evaluation.chart_types import get_parser
+from src.evaluation.row_types import (
+    BubbleRow, BoxRow, ChartRow, ErrorRow, MetaRow, ScatterRow, StandardRow,
 )
-
-# --- CONFIGURAZIONE ---
 from src.config import PREDICTIONS_DIR as PREDICTIONS_ROOT
 from src.config import GROUNDTRUTH_DIR as GROUNDTRUTH_ROOT
 from src.config import IMAGES_DIR as IMAGES_ROOT
@@ -55,133 +54,30 @@ def _model_color(model_name: str, model_names: list[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Value formatting
+# Row display helpers
 # ---------------------------------------------------------------------------
 
-_STRUCTURED_FIELD_ORDER = ("min", "q1", "median", "q3", "max")
-
-
-def _fmt(v: Any, max_len: int = 28) -> str:
-    if isinstance(v, ScatterVal):
-        return f"({v.x:.4g}, {v.y:.4g})"
-    if isinstance(v, BubbleVal):
-        parts = [f"x={v.x:.4g}"]
-        if v.z is not None:
-            parts.append(f"z={v.z:.4g}")
-        if v.w is not None:
-            parts.append(f"w={v.w:.4g}")
-        return " ".join(parts)
-    if isinstance(v, StructuredVal):
-        return " | ".join(f"{k}={fv:.3g}" for k, fv in v.fields.items())
-    if isinstance(v, dict):
-        # Raw structured value (box/errorpoint) stored as dict in the JSON
-        parts = []
-        for k in _STRUCTURED_FIELD_ORDER:
-            if k in v and v[k] is not None:
-                try:
-                    parts.append(f"{k}={float(v[k]):.3g}")
-                except (TypeError, ValueError):
-                    pass
-        if parts:
-            return " | ".join(parts)
-    if isinstance(v, float):
-        return f"{v:.4g}"
-    s = str(v)
-    return s if len(s) <= max_len else s[: max_len - 1] + "…"
-
-
-def _sim_color(sim: float) -> str:
-    if sim >= 0.8:
-        return "#82e0aa"
-    if sim >= 0.5:
-        return "#f9e79f"
-    if sim >= 0.2:
-        return "#f0b27a"
-    return "#e74c3c"
-
-
-# ---------------------------------------------------------------------------
-# Raw-value lookup helpers
-# ---------------------------------------------------------------------------
-
-def _build_raw_lookup(raw_data: dict | None, chart_type: str) -> dict:
-    """
-    Build a (series_name, col_key) → raw_value dict from un-normalised data_points.
-
-    col_key mirrors how json_to_mappings sets Mapping.col:
-      categorical_x / bubble_x / scatter : str(x_value)
-      categorical_y / bubble_y           : str(y_value)
-
-    For scatter the col is always "__scatter__", so lookup by series+col is not
-    unique. In that case we store the first occurrence (good enough for display).
-    """
-    if not raw_data:
-        return {}
-    lookup: dict = {}
-    for dp in raw_data.get("data_points", []):
-        series = str(dp.get("series_name", ""))
-        if chart_type == "bubble_y":
-            col = str(dp.get("y_value", ""))
-            # 3-tuple: (primary, z, w) — distinguished from scatter's 2-tuple
-            val = (dp.get("x_value"), dp.get("z_value"), dp.get("w_value"))
-        elif chart_type == "bubble_x":
-            col = str(dp.get("x_value", ""))
-            val = (dp.get("y_value"), dp.get("z_value"), dp.get("w_value"))
-        elif chart_type == "categorical_y":
-            col = str(dp.get("y_value", ""))
-            val = dp.get("x_value", "")
-        elif chart_type == "scatter":
-            col = "__scatter__"
-            # Store a 2-tuple so _fmt_raw can build a ScatterVal
-            val = (dp.get("x_value"), dp.get("y_value"))
-        else:  # categorical_x
-            col = str(dp.get("x_value", ""))
-            val = dp.get("y_value", "")
-        key = (series, col)
-        if key not in lookup:   # keep first match for duplicate keys
-            lookup[key] = val
-    return lookup
-
-
-def _fmt_raw(m: Mapping, lookup: dict) -> str:
-    """
-    Return a display string for m.val using the raw lookup when available.
-    Falls back to _fmt(m.val) if the key is not found.
-    """
-    # Scatter Mappings all share col="__scatter__"; the lookup cannot
-    # distinguish between individual points — use the parsed value directly.
-    if m.col == "__scatter__":
-        return _fmt(m.val)
-    raw = lookup.get((m.row, m.col))
-    if raw is None:
-        return _fmt(m.val)
-    if isinstance(raw, tuple):
-        if len(raw) == 2:
-            # Scatter: (x_raw, y_raw)
-            x, y = raw
-            try:
-                return f"({float(x):.4g}, {float(y):.4g})"
-            except (TypeError, ValueError):
-                return f"({x}, {y})"
-        # Bubble: (primary_raw, z_raw, w_raw)
-        primary, z, w = raw
-        parts: list[str] = []
-        try:
-            parts.append(f"{float(primary):.4g}")
-        except (TypeError, ValueError):
-            parts.append(str(primary))
-        if z is not None:
-            try:
-                parts.append(f"z={float(z):.4g}")
-            except (TypeError, ValueError):
-                parts.append(f"z={z}")
-        if w is not None:
-            try:
-                parts.append(f"w={float(w):.4g}")
-            except (TypeError, ValueError):
-                parts.append(f"w={w}")
-        return " ".join(parts)
-    return _fmt(raw)
+def _row_display(row: ChartRow) -> tuple[str, str, str]:
+    """Return (series, key, value_str) for any ChartRow subtype."""
+    if isinstance(row, StandardRow):
+        return row.series, row.label, f"{row.value:.4g}"
+    if isinstance(row, ScatterRow):
+        return row.series, f"{row.x:.4g}", f"{row.y:.4g}"
+    if isinstance(row, BoxRow):
+        parts = [f"{k}={v:.3g}" for k, v in
+                 [("min", row.min), ("q1", row.q1), ("med", row.median),
+                  ("q3", row.q3), ("max", row.max)] if v is not None]
+        return row.series, row.label, " | ".join(parts)
+    if isinstance(row, ErrorRow):
+        parts = [f"{k}={v:.3g}" for k, v in
+                 [("min", row.min), ("med", row.median), ("max", row.max)] if v is not None]
+        return row.series, row.label, " | ".join(parts)
+    if isinstance(row, BubbleRow):
+        extra = "".join(f" {k}={v:.3g}" for k, v in [("z", row.z), ("w", row.w)] if v is not None)
+        return row.series, row.label, f"{row.value:.4g}{extra}"
+    if isinstance(row, MetaRow):
+        return "__meta__", row.field, str(row.value)
+    return "", "?", str(row)
 
 
 # ---------------------------------------------------------------------------
@@ -197,100 +93,133 @@ _SCROLL_WRAP = "overflow-x:auto; max-width:100%;"
 
 
 # ---------------------------------------------------------------------------
-# GT compact table — always uses raw (un-normalised) data
+# Parsed-rows table  (used for GT block)
 # ---------------------------------------------------------------------------
 
-def _gt_table(gt_data_raw: dict) -> str:
-    dps = gt_data_raw.get("data_points", [])
-    title = gt_data_raw.get("chart_title", "")
-    rows = ""
-    if title:
-        rows += (
-            f"<tr><td colspan='3' style='{_TD} color:#aaa; font-style:italic;'>"
-            f"title: {title}</td></tr>"
+def _parsed_rows_table(rows: list[ChartRow]) -> str:
+    """Build an HTML table from a list of parsed ChartRow objects."""
+    if not rows:
+        return "<div style='color:#888; font-size:10px;'>Nessun dato parsato</div>"
+
+    meta_rows = [r for r in rows if isinstance(r, MetaRow)]
+    data_rows = [r for r in rows if not isinstance(r, MetaRow)]
+
+    html = ""
+    for m in meta_rows:
+        html += (
+            f"<div style='color:#aaa; font-size:10px; font-style:italic; margin-bottom:4px;'>"
+            f"{m.field}: {m.value}</div>"
         )
-    for dp in dps:
-        series = str(dp.get("series_name", ""))
-        x = _fmt(dp.get("x_value", ""))
-        y = _fmt(dp.get("y_value", ""))
-        rows += (
+
+    if not data_rows:
+        return html + "<div style='color:#888; font-size:10px;'>Nessun dato</div>"
+
+    rows_html = ""
+    for row in data_rows:
+        series, key, val = _row_display(row)
+        rows_html += (
             f"<tr>"
             f"<td style='{_TD} color:#7fb3d3;'>{series}</td>"
-            f"<td style='{_TD}'>{x}</td>"
-            f"<td style='{_TD}'>{y}</td>"
+            f"<td style='{_TD}'>{key}</td>"
+            f"<td style='{_TD} color:#98d8a0;'>{val}</td>"
             f"</tr>"
         )
+
     table = (
         f"<table style='border-collapse:collapse; font-size:10px;'>"
         f"<tr>"
         f"<th style='{_TH}'>series</th>"
-        f"<th style='{_TH}'>x</th>"
-        f"<th style='{_TH}'>y</th>"
+        f"<th style='{_TH}'>key</th>"
+        f"<th style='{_TH}'>value</th>"
         f"</tr>"
-        f"{rows}"
+        f"{rows_html}"
         f"</table>"
     )
-    return f"<div style='{_SCROLL_WRAP}'>{table}</div>"
+    return html + f"<div style='{_SCROLL_WRAP}'>{table}</div>"
 
 
 # ---------------------------------------------------------------------------
-# Match table — display uses raw lookups, Sim comes from normalised metric
+# Match table  (GT ↔ pred with per-row similarity)
 # ---------------------------------------------------------------------------
 
-def _match_table(
-    detail: dict,
-    gt_raw_lookup: dict,
-    pred_raw_lookup: dict,
+def _sim_color(sim: float) -> str:
+    if sim >= 0.8:
+        return "#82e0aa"
+    if sim >= 0.5:
+        return "#f9e79f"
+    if sim >= 0.2:
+        return "#f0b27a"
+    return "#e74c3c"
+
+
+def _match_html_table(
+    pred_rows: list[ChartRow],
+    gt_rows: list[ChartRow],
+    pairs: list,       # [(pred_idx, gt_idx, sim), ...]
 ) -> str:
-    def _cells(m: Mapping, lookup: dict, color: str = "#e0e0e0") -> str:
-        return (
-            f"<td style='{_TD} color:#7fb3d3;'>{m.row}</td>"
-            f"<td style='{_TD}'>{m.col}</td>"
-            f"<td style='{_TD} color:{color};'>{_fmt_raw(m, lookup)}</td>"
-        )
-
-    def _empty() -> str:
-        return f"<td colspan='3' style='{_TD} color:#444; text-align:center;'>—</td>"
-
-    rows = ""
-
-    for entry in detail["pairs"]:
-        sim = entry["similarity"]
-        c = _sim_color(sim)
-        rows += (
-            f"<tr>"
-            f"{_cells(entry['gt'], gt_raw_lookup)}"
-            f"{_cells(entry['pred'], pred_raw_lookup, color=c)}"
-            f"<td style='{_TD} color:{c}; font-weight:bold;'>{sim:.2f}</td>"
-            f"</tr>"
-        )
-
-    for m in detail["unmatched_gt"]:
-        rows += (
-            f"<tr>"
-            f"{_cells(m, gt_raw_lookup)}"
-            f"{_empty()}"
-            f"<td style='{_TD} color:#e74c3c;'>0.00</td>"
-            f"</tr>"
-        )
-
-    for m in detail["unmatched_pred"]:
-        rows += (
-            f"<tr>"
-            f"{_empty()}"
-            f"{_cells(m, pred_raw_lookup, color='#e74c3c')}"
-            f"<td style='{_TD} color:#e74c3c;'>0.00</td>"
-            f"</tr>"
-        )
-
-    if not rows:
+    if not pred_rows and not gt_rows:
         return "<div style='color:#888; font-size:10px;'>Nessun dato</div>"
+
+    display_pred = pred_rows
+
+    matched_pred = {pi for pi, _, _ in pairs}
+    matched_gt   = {ti for _, ti, _ in pairs}
+    unmatched_gt   = [gt_rows[j]       for j in range(len(gt_rows))   if j not in matched_gt]
+    unmatched_pred = [display_pred[i]  for i in range(len(pred_rows)) if i not in matched_pred]
+
+    rows_html = ""
+    empty3 = f"<td colspan='3' style='{_TD} color:#444; text-align:center;'>—</td>"
+
+    for pi, ti, sim in sorted(pairs, key=lambda x: x[1]):
+        p = display_pred[pi]
+        t = gt_rows[ti]
+        ts, tk, tv = _row_display(t)
+        ps, pk, pv = _row_display(p)
+        c = _sim_color(sim)
+        rows_html += (
+            f"<tr>"
+            f"<td style='{_TD} color:#7fb3d3;'>{ts}</td>"
+            f"<td style='{_TD}'>{tk}</td>"
+            f"<td style='{_TD} color:#98d8a0;'>{tv}</td>"
+            f"<td style='{_TD} color:#7fb3d3;'>{ps}</td>"
+            f"<td style='{_TD} color:{c};'>{pk}</td>"
+            f"<td style='{_TD} color:{c};'>{pv}</td>"
+            f"<td style='{_TD} color:{c}; font-weight:bold; text-align:right;'>{sim:.2f}</td>"
+            f"</tr>"
+        )
+
+    for t in unmatched_gt:
+        ts, tk, tv = _row_display(t)
+        rows_html += (
+            f"<tr>"
+            f"<td style='{_TD} color:#7fb3d3;'>{ts}</td>"
+            f"<td style='{_TD}'>{tk}</td>"
+            f"<td style='{_TD} color:#98d8a0;'>{tv}</td>"
+            f"{empty3}"
+            f"<td style='{_TD} color:#e74c3c; font-weight:bold; text-align:right;'>FN</td>"
+            f"</tr>"
+        )
+
+    for p in unmatched_pred:
+        ps, pk, pv = _row_display(p)
+        rows_html += (
+            f"<tr>"
+            f"{empty3}"
+            f"<td style='{_TD} color:#7fb3d3;'>{ps}</td>"
+            f"<td style='{_TD} color:#e74c3c;'>{pk}</td>"
+            f"<td style='{_TD} color:#e74c3c;'>{pv}</td>"
+            f"<td style='{_TD} color:#e74c3c; font-weight:bold; text-align:right;'>FP</td>"
+            f"</tr>"
+        )
+
+    if not rows_html:
+        return "<div style='color:#888; font-size:10px;'>Nessun abbinamento</div>"
 
     table = (
         f"<table style='border-collapse:collapse; font-size:10px;'>"
         f"<tr>"
         f"<th style='{_TH}' colspan='3'>GT</th>"
-        f"<th style='{_TH}' colspan='3'>Pred</th>"
+        f"<th style='{_TH}' colspan='3'>Predizione</th>"
         f"<th style='{_TH}'>Sim</th>"
         f"</tr>"
         f"<tr>"
@@ -298,10 +227,11 @@ def _match_table(
         f"<th style='{_TH}'>series</th><th style='{_TH}'>key</th><th style='{_TH}'>val</th>"
         f"<th style='{_TH}'></th>"
         f"</tr>"
-        f"{rows}"
+        f"{rows_html}"
         f"</table>"
     )
     return f"<div style='{_SCROLL_WRAP}'>{table}</div>"
+
 
 
 # ---------------------------------------------------------------------------
@@ -313,13 +243,33 @@ def _metrics_bar(result: dict) -> str:
     pre = result["precision"]
     rec = result["recall"]
     c   = _sim_color(f1)
+    ori = result.get("orientation", "normal")
     return (
         f"<div style='color:{c}; font-size:10px; background:#0a0a0a; "
         f"padding:3px 6px; margin-bottom:6px; border-radius:3px; white-space:nowrap;'>"
         f"F1&nbsp;{f1*100:.1f} &nbsp;|&nbsp; P&nbsp;{pre*100:.1f} &nbsp;|&nbsp; "
         f"R&nbsp;{rec*100:.1f} &nbsp;|&nbsp; "
-        f"<span style='color:#777'>{result['chart_type']} / {result['orientation']}</span>"
+        f"<span style='color:#777'>{result['chart_type']} / {ori}</span>"
         f"</div>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Warnings display
+# ---------------------------------------------------------------------------
+
+def _warnings_html(warn_msgs: list[str]) -> str:
+    if not warn_msgs:
+        return ""
+    items = "".join(
+        f"<li style='margin:2px 0; color:#f0b27a;'>{w}</li>"
+        for w in warn_msgs
+    )
+    return (
+        f"<details style='margin-top:6px; font-size:10px;'>"
+        f"<summary style='color:#f0b27a; cursor:pointer;'>⚠ {len(warn_msgs)} warning(s)</summary>"
+        f"<ul style='margin:4px 0 0 12px; padding:0; color:#f0b27a;'>{items}</ul>"
+        f"</details>"
     )
 
 
@@ -328,16 +278,29 @@ def _metrics_bar(result: dict) -> str:
 # ---------------------------------------------------------------------------
 
 _BLOCK_FLEX = "flex: 0 0 calc(33.33% - 12px); min-width: 300px; box-sizing: border-box;"
+_BTN = (
+    "font-size:9px; padding:1px 6px; border:1px solid #555; background:#2a2a2a; "
+    "color:#aaa; cursor:pointer; border-radius:3px; font-family:monospace; "
+    "vertical-align:middle; margin-left:8px;"
+)
 
 
-def _block(title: str, body_html: str, accent: str = "#888", bg: str = "#1e1e1e") -> str:
+def _block(title: str, body_html: str, accent: str = "#888", bg: str = "#1e1e1e",
+           json_uri: str = "") -> str:
+    btn = (
+        f"<a href='{json_uri}' target='_blank' style='text-decoration:none;'>"
+        f"<button style='{_BTN}'>json</button></a>"
+    ) if json_uri else ""
     return (
         f"<div style='{_BLOCK_FLEX} border:1px solid #444; border-top:2px solid {accent}; "
         f"padding:12px; border-radius:6px; background:{bg}; color:#e0e0e0; "
         f"font-family:monospace; font-size:12px; overflow:hidden;'>"
         f"<div style='margin-bottom:8px; color:{accent}; font-size:10px; font-weight:bold; "
         f"border-bottom:1px solid #333; padding-bottom:4px; text-transform:uppercase; "
-        f"white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>{title}</div>"
+        f"display:flex; align-items:center;'>"
+        f"<span style='overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'>{title}</span>"
+        f"{btn}"
+        f"</div>"
         f"{body_html}"
         f"</div>"
     )
@@ -361,10 +324,10 @@ def genera_sezione_immagine(
     ext = img_path.suffix.lstrip(".").lower()
     mime = "jpeg" if ext in ("jpg", "jpeg") else ext
 
-    # Load GT: raw for display, normalised for metrics
     gt_data_raw: dict | None = None
     gt_data_norm: dict | None = None
     basi_gt: dict = {}
+    gt_parse_warns: list[str] = []
 
     if gt_json_path.exists():
         with open(gt_json_path, "r", encoding="utf-8") as fh:
@@ -385,8 +348,17 @@ def genera_sezione_immagine(
         f"</div>"
     )
 
-    # GT block — raw values
-    gt_body = _gt_table(gt_data_raw) if gt_data_raw else "<div style='color:#888'>GT Assente</div>"
+    # GT block — parsed rows from raw data
+    if gt_data_raw:
+        parser = get_parser(chart_class)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            gt_rows_raw = parser.parse(gt_data_raw)
+        gt_parse_warns = [str(w.message) for w in caught]
+        gt_body = _parsed_rows_table(gt_rows_raw) + _warnings_html(gt_parse_warns)
+    else:
+        gt_body = "<div style='color:#888'>GT Assente</div>"
+
     blocks.append(_block("Ground Truth", gt_body, accent="#5dade2", bg="#1a2535"))
 
     # Model blocks
@@ -396,31 +368,48 @@ def genera_sezione_immagine(
             PREDICTIONS_ROOT / model / dataset_type / chart_class / rel_path.with_suffix(".json")
         )
 
-        # Raw prediction (no base subtraction) for display only
-        pred_data_raw = load_prediction(pred_path, {})
-        # Normalised prediction for metric computation
         pred_data_norm = load_prediction(pred_path, basi_gt)
 
+        # Link to the actual prediction file (fallback to .txt for DePlot)
+        actual_pred_path = pred_path if pred_path.exists() else pred_path.with_suffix(".txt")
+        json_uri = actual_pred_path.as_uri() if actual_pred_path.exists() else ""
+
         if pred_data_norm is None:
-            body = "<div style='color:#888; font-size:10px;'>Predizione assente</div>"
-            blocks.append(_block(model, body, accent=accent))
+            blocks.append(_block(model,
+                "<div style='color:#888; font-size:10px;'>Predizione assente</div>",
+                accent=accent, json_uri=json_uri))
             continue
 
         if gt_data_norm is None:
-            body = "<div style='color:#888; font-size:10px;'>GT assente</div>"
-            blocks.append(_block(model, body, accent=accent))
+            blocks.append(_block(model,
+                "<div style='color:#888; font-size:10px;'>GT assente</div>",
+                accent=accent, json_uri=json_uri))
             continue
 
+        pred_parse_warns: list[str] = []
         try:
-            detail = compute_rms_detailed(pred_data_norm, gt_data_norm)
-            chart_type = detail["chart_type"]
-            gt_raw_lookup   = _build_raw_lookup(gt_data_raw,   chart_type)
-            pred_raw_lookup = _build_raw_lookup(pred_data_raw, chart_type)
-            body = _metrics_bar(detail) + _match_table(detail, gt_raw_lookup, pred_raw_lookup)
-        except Exception as exc:
-            body = f"<div style='color:#e74c3c; font-size:10px;'>Metric Error: {exc}</div>"
+            with warnings.catch_warnings(record=True) as pred_caught:
+                warnings.simplefilter("always")
+                try_transpose = model.lower() == "deplot"
+                result = compute_rms(pred_data_norm, gt_data_norm,
+                                     chart_type=chart_class, debug=True,
+                                     try_transpose=try_transpose)
+            pred_parse_warns = [str(w.message) for w in pred_caught]
 
-        blocks.append(_block(model, body, accent=accent))
+            pairs = result[result["orientation"]]["pairs"]
+
+            body = (
+                _metrics_bar(result)
+                + _match_html_table(result["pred_rows"], result["gt_rows"], pairs)
+                + _warnings_html(pred_parse_warns)
+            )
+        except Exception as exc:
+            body = (
+                f"<div style='color:#e74c3c; font-size:10px;'>Errore metrica: {exc}</div>"
+                + _warnings_html(pred_parse_warns)
+            )
+
+        blocks.append(_block(model, body, accent=accent, json_uri=json_uri))
 
     return (
         f"<div style='margin-bottom:50px; padding-bottom:20px; border-bottom:2px dashed #333;'>"
@@ -436,7 +425,8 @@ def genera_sezione_immagine(
 # Main
 # ---------------------------------------------------------------------------
 
-def generate_reports() -> None:
+def generate_reports(chart_classes: list[str] | None = None) -> None:
+    """Generate HTML reports. Pass chart_classes=['pie'] to restrict output."""
     model_names = get_available_models()
 
     legend_items = "".join(
@@ -455,6 +445,9 @@ def generate_reports() -> None:
                 continue
 
             chart_class = chart_class_dir.name
+            if chart_classes and chart_class not in chart_classes:
+                continue
+
             images = sorted(
                 (f for f in chart_class_dir.rglob("*")
                  if f.suffix.lower() in (".jpg", ".png", ".jpeg")),
@@ -488,7 +481,7 @@ def generate_reports() -> None:
             output_file = REPORTS_ROOT / dataset_type / f"report_{chart_class}.html"
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(html, encoding="utf-8")
-            print(f"Creato report: {output_file}")
+            print(f"Creato: {output_file}")
 
 
 if __name__ == "__main__":
