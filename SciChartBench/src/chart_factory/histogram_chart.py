@@ -74,12 +74,13 @@ def _sample(ser: dict) -> np.ndarray:
         return np.clip(np.random.normal(mu, sigma, n) - 0.3 * abs(np.random.normal(0, sigma, n)), 1, 5)
 
 
-def _hist_data_points(counts, bin_edges, series_name) -> list:
+def _hist_data_points(counts, bin_edges, series_name, round_to_int=True) -> list:
     """Convert histogram (counts, bin_edges) to data_points list."""
     dp = []
     for cnt, left, right in zip(counts, bin_edges[:-1], bin_edges[1:]):
         mid = round((left + right) / 2, 4)
-        dp.append({"series_name": series_name, "x_value": mid, "y_value": int(cnt)})
+        y = int(cnt) if round_to_int else round(float(cnt), 4)
+        dp.append({"series_name": series_name, "x_value": mid, "y_value": y})
     return dp
 
 # ─────────────────────────────────────────
@@ -145,7 +146,7 @@ def _render_cumulative(tmpl, theme, idx):
     plt.tight_layout()
     x_lim = get_axis_limits(ax, "x")
     y_lim = get_axis_limits(ax, "y")
-    dp    = _hist_data_points(counts, bin_edges, ser["name"])
+    dp    = _hist_data_points(counts, bin_edges, ser["name"], round_to_int=False)
     title = tmpl["theme"] + " (Cumulative)"
     return fig, build_standard_json(title, tmpl["x_label"], "Cumulative Frequency", x_lim, y_lim, dp)
 
