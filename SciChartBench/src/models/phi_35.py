@@ -96,7 +96,6 @@ def extract_table_phi(model, processor, image_path, prompt_text):
 
     generation_args = {
         "max_new_tokens": 15_000,
-        "temperature": 0.0,
         "do_sample": False,
         "eos_token_id": processor.tokenizer.eos_token_id
     }
@@ -166,13 +165,22 @@ def run_batch_inference(model, processor, tier="3.5-Vision"):
 
                 try:
                     json.loads(clean_json)
+                    json_output_path.write_text(clean_json, encoding="utf-8")
                 except json.JSONDecodeError as e:
                     print(f"  [ATTENZIONE] Il modello ha generato un JSON non valido per {img_path.name}: {e}")
-                
-                json_output_path.write_text(clean_json, encoding="utf-8")
+                    fallback_content = json.dumps({
+                        "error": "JSONDecodeError",
+                        "raw_model_output": clean_json
+                    }, indent=4, ensure_ascii=False)
+                    json_output_path.write_text(fallback_content, encoding="utf-8")
                 
             except Exception as e:
                 print(f"Errore critico durante l'elaborazione di {img_path}: {e}")
+                critical_error_content = json.dumps({
+                    "error": "CriticalInferenceError",
+                    "details": str(e)
+                }, indent=4, ensure_ascii=False)
+                json_output_path.write_text(critical_error_content, encoding="utf-8")
 
 def ask_phi(tier="3.5-Vision"):
     modello, processore = setup_phi_vision(tier=tier)
