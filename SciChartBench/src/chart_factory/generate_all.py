@@ -25,6 +25,7 @@ from src.chart_factory import (
     radar_chart,
     line_chart,
     histogram_chart,
+    heatmap_chart,
 )
 
 GENERATORS = {
@@ -37,6 +38,7 @@ GENERATORS = {
     "radar":      radar_chart.generate_charts,
     "line":       line_chart.generate_charts,
     "histogram":  histogram_chart.generate_charts,
+    "heatmap":    heatmap_chart.generate_charts,
 }
 
 ALL_TYPES = list(GENERATORS.keys())
@@ -88,8 +90,8 @@ def main():
     total = time.time() - total_start
     print()
     print(f"All done in {total:.1f}s.")
-    print(f"  Images  → data/data/synthetic/{{type}}/")
-    print(f"  JSONs   → data/groundtruth/synthetic/{{type}}/")
+    print(f"  Images  → data/images/synthetic2/{{type}}/")
+    print(f"  JSONs   → data/groundtruth/synthetic2/{{type}}/")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ Modules:
   radar_chart       – Radar chart (3 subtypes)
   line_chart        – Line chart (5 subtypes)
   histogram_chart   – Histogram (3 subtypes)
+  heatmap_chart     – Heatmap (4 subtypes)
 
 Entry point:
   generate_all.py   – CLI: python src/chart_factory/generate_all.py --n 50 --types all
@@ -27,6 +28,7 @@ from . import (
     radar_chart,
     line_chart,
     histogram_chart,
+    heatmap_chart,
 )
 
 __all__ = [
@@ -39,4 +41,5 @@ __all__ = [
     "radar_chart",
     "line_chart",
     "histogram_chart",
+    "heatmap_chart",
 ]
