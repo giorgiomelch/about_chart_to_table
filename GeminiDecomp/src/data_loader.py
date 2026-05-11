@@ -66,6 +66,7 @@ def load_coco_predictions(
     predictions_path: str | Path,
     gt_path: str | Path,
     score_threshold: float = 0.0,
+    full_image_fallback: bool = False,
 ) -> Dict[str, List[dict]]:
     """
     Carica predizioni in formato COCO (lista di {image_id, category_id, bbox, score})
@@ -75,9 +76,11 @@ def load_coco_predictions(
     ground truth LabelStudio (usa inner_id come image_id).
 
     Args:
-        predictions_path: file JSON con predizioni COCO
-        gt_path:          file JSON ground truth LabelStudio (per il mapping id→filename+dims)
-        score_threshold:  filtra predizioni con score < soglia
+        predictions_path:    file JSON con predizioni COCO
+        gt_path:             file JSON ground truth LabelStudio (per il mapping id→filename+dims)
+        score_threshold:     filtra predizioni con score < soglia
+        full_image_fallback: se True, per le immagini senza predizioni sopra la soglia
+                             aggiunge una singola bbox che copre tutta l'immagine [0,0,100,100]
 
     Returns:
         dict  filename → lista di {"bbox": [x%, y%, w%, h%], "label": "detection", "score": float}
@@ -121,6 +124,13 @@ def load_coco_predictions(
             "label": "detection",
             "score": pred["score"],
         })
+
+    if full_image_fallback:
+        for fname, boxes in result.items():
+            if not boxes:
+                result[fname] = [{"bbox": [0.0, 0.0, 100.0, 100.0],
+                                   "label": "detection",
+                                   "score": 0.0}]
 
     return result
 
