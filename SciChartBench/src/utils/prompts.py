@@ -169,27 +169,27 @@ The JSON must strictly adhere to the following standardized structure, which ada
 }
 """
 
+
 PROMPT_Heatmap = """
 You are an expert data analyst in extracting visual information. 
 Your task is to analyze the provided heatmap image and reconstruct the underlying data table by extracting the exact values or, 
-if not explicitly stated, making the most accurate estimate possible based on the colors.
-
-Return the output EXCLUSIVELY in valid JSON format, without any additional text or markdown formatting outside the JSON.
+if not explicitly stated, making the most accurate estimate possible based on the colors. Use null for missing or undefined cells.
+Return valid JSON only, without any additional text or markdown formatting outside the JSON.
 The JSON must strictly adhere to the following structure:
-
 {
-    "chart_title": "Main title of the chart (null if absent)",
-    "x_axis_label": "X-axis label (null if absent)",
-    "y_axis_label": "Y-axis label (null if absent)", 
-    "data_points": [
-        {
-        "x_value": "Category or numerical value on the X-axis.",
-        "y_value": "Category or numerical value on the Y-axis.",
-        "cell_value": "Category or numerical value represented by the number or the color intensity of the cell (null if absent)."
-        }
-    ]
+  "chart_title": "chart title or null",
+  "x_axis_label": "x-axis label or null",
+  "y_axis_label": "y-axis label or null",
+  "x_categories": ["col1", "col2", ...],
+  "y_categories": ["row1", "row2", ...],
+  "matrix": [[v00, v01, ...], [v10, v11, ...], ...]
 }
+
+x_categories: left to right as they appear in the chart.
+y_categories: top to bottom as they appear in the chart.
+Rows correspond to y_categories, columns to x_categories.
 """
+
 
 PROMPT2CHARTCLASS = {
     "area": PROMPT_AreaLineBarHistogram,
