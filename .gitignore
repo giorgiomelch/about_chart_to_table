@@ -8,6 +8,7 @@
 *.txt
 *.html
 *.pth
+!deformable-detr-infer/checkpoints/checkpoint05.pth
 *.log
 *.pyc
 *.csv
