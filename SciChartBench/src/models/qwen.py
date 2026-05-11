@@ -175,13 +175,22 @@ def run_batch_inference(model, processor, tier="2B"):
                 # Validazione strutturale
                 try:
                     json.loads(clean_json)
+                    json_output_path.write_text(clean_json, encoding="utf-8")
                 except json.JSONDecodeError as e:
                     print(f"  [ATTENZIONE] Il modello ha generato un JSON non valido per {img_path.name}: {e}")
-                
-                json_output_path.write_text(clean_json, encoding="utf-8")
+                    fallback_content = json.dumps({
+                        "error": "JSONDecodeError",
+                        "raw_model_output": clean_json
+                    }, indent=4, ensure_ascii=False)
+                    json_output_path.write_text(fallback_content, encoding="utf-8")
                 
             except Exception as e:
                 print(f"Errore critico durante l'elaborazione di {img_path}: {e}")
+                critical_error_content = json.dumps({
+                    "error": "CriticalInferenceError",
+                    "details": str(e)
+                }, indent=4, ensure_ascii=False)
+                json_output_path.write_text(critical_error_content, encoding="utf-8")
 
 def ask_qwen(tier="2B", quantizzazione=True):
     modello, processore = setup_qwen2_vl(tier=tier, use_4bit=quantizzazione)
