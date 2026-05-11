@@ -10,29 +10,111 @@ from pathlib import Path
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from .distance import d_theta_scatter, entry_similarity, nl_tau
-from .parser import _detect_chart_type, _extract_ranges, json_to_mappings
-from .types import AxisRanges, Mapping, ScatterVal
+from .distance import _vd_scatter, d_theta, nl_tau, val_distance
+from .types import AxisRanges
+from ..row_types import (
+    BoxRow, BubbleRow, ChartRow, ErrorRow,
+    MetaRow, ScatterRow, StandardRow,
+)
+
+
+# ---------------------------------------------------------------------------
+# Axis metadata injection
+# ---------------------------------------------------------------------------
+
+def _inject_axis_meta(pred: dict, gt: dict) -> dict:
+    """Copy axis metadata from GT into pred (predictions never include axis ranges).
+
+    Orientation detection (_is_horizontal, _x_is_categorical, etc.) reads from
+    axis metadata.  Without this injection, predictions parsed in isolation would
+    always appear to have all-null axes and pick the wrong orientation.
+    """
+    if not isinstance(pred, dict) or not isinstance(gt, dict):
+        return pred
+    result = dict(pred)
+    for key in ("x_axis", "y_axis", "z_axis", "w_axis", "cell_axis"):
+        if result.get(key) is None and gt.get(key) is not None:
+            result[key] = gt[key]
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _drop_series_from_row(mappings: list[Mapping]) -> list[Mapping]:
-    """Set row='' for all non-metadata mappings (ignores the series dimension)."""
-    return [
-        Mapping(row="" if m.row != "__meta__" else m.row, col=m.col, val=m.val)
-        for m in mappings
-    ]
+def _strip_series(rows: list[ChartRow]) -> list[ChartRow]:
+    """Replace series with '' for rows that carry a label (ignores series dimension)."""
+    result = []
+    for row in rows:
+        if isinstance(row, StandardRow):
+            result.append(StandardRow(series="", label=row.label, value=row.value))
+        elif isinstance(row, ErrorRow):
+            result.append(ErrorRow(series="", label=row.label,
+                                   min=row.min, median=row.median, max=row.max))
+        elif isinstance(row, BoxRow):
+            result.append(BoxRow(series="", label=row.label,
+                                 min=row.min, q1=row.q1, median=row.median,
+                                 q3=row.q3, max=row.max))
+        elif isinstance(row, BubbleRow):
+            result.append(BubbleRow(series="", label=row.label,
+                                    value=row.value, z=row.z, w=row.w))
+        else:
+            result.append(row)  # ScatterRow, MetaRow — unchanged
+    return result
 
 
-def _rms_single(P: list[Mapping], T: list[Mapping], tau: float, theta: float,
-                ranges: AxisRanges | None = None) -> dict:
+def _transpose_rows(rows: list[ChartRow]) -> list[ChartRow]:
+    """Swap series ↔ label (equivalent to transposing row/col in old Mapping)."""
+    result = []
+    for row in rows:
+        if isinstance(row, StandardRow):
+            result.append(StandardRow(series=row.label, label=row.series, value=row.value))
+        elif isinstance(row, ErrorRow):
+            result.append(ErrorRow(series=row.label, label=row.series,
+                                   min=row.min, median=row.median, max=row.max))
+        elif isinstance(row, BoxRow):
+            result.append(BoxRow(series=row.label, label=row.series,
+                                 min=row.min, q1=row.q1, median=row.median,
+                                 q3=row.q3, max=row.max))
+        elif isinstance(row, BubbleRow):
+            result.append(BubbleRow(series=row.label, label=row.series,
+                                    value=row.value, z=row.z, w=row.w))
+        else:
+            result.append(row)  # ScatterRow, MetaRow — unchanged
+    return result
+
+
+def _distinct_series(rows: list[ChartRow]) -> set[str]:
+    return {r.series for r in rows if not isinstance(r, (MetaRow, ScatterRow))}
+
+
+def _all_main(rows: list[ChartRow]) -> bool:
+    """True when every labeled row has series_name == 'Main' (single-series sentinel)."""
+    labeled = [r for r in rows if not isinstance(r, (MetaRow, ScatterRow))]
+    return bool(labeled) and all(r.series == "Main" for r in labeled)
+
+
+def _scatter_entry_sim(p: ScatterRow, t: ScatterRow,
+                       theta: float, ranges: AxisRanges | None) -> float:
     """
-    Compute RMS scores for a single orientation of predicted vs ground-truth mappings.
+    Entry similarity for scatter-degenerate rows: (1-dx) * (1-dy).
 
-    Returns dict with: precision, recall, f1, matched_sim, pairs.
+    Theta is checked independently per axis: a point beyond theta in x contributes
+    zero x-credit regardless of how well y matches, and vice versa.
+    """
+    if ranges is None or ranges.x is None or ranges.y is None:
+        return 1.0 if (p.x == t.x and p.y == t.y) else 0.0
+    dx = d_theta(p.x, t.x, theta, ranges.x, ranges.x_log)
+    dy = d_theta(p.y, t.y, theta, ranges.y, ranges.y_log)
+    return (1.0 - dx) * (1.0 - dy)
+
+
+def _rms_single(P: list[ChartRow], T: list[ChartRow],
+                tau: float, theta: float, ranges: AxisRanges | None,
+                scatter_type: bool) -> dict:
+    """
+    Compute RMS scores for one orientation of predicted vs ground-truth rows.
+    Returns dict: precision, recall, f1, matched_sim, pairs.
     """
     N, M = len(P), len(T)
 
@@ -43,53 +125,65 @@ def _rms_single(P: list[Mapping], T: list[Mapping], tau: float, theta: float,
     if M == 0:
         return {"precision": 0.0, "recall": 1.0, "f1": 0.0, "matched_sim": 0.0, "pairs": []}
 
-    # If either side has a single series, the series name carries no information.
-    # Normalise both so key matching uses only the categorical key.
-    def _data_rows(ms: list[Mapping]) -> set[str]:
-        return {m.row for m in ms if m.row != "__meta__"}
+    # Single-series normalization: drop series from key when either side has <=1 distinct
+    # series, or when the GT uses the 'Main' sentinel (meaning no series dimension).
+    if len(_distinct_series(P)) <= 1 or len(_distinct_series(T)) <= 1 or _all_main(T):
+        P = _strip_series(P)
+        T = _strip_series(T)
 
-    if len(_data_rows(P)) <= 1 or len(_data_rows(T)) <= 1:
-        P = _drop_series_from_row(P)
-        T = _drop_series_from_row(T)
-
-    # For degenerate single-series scatter (all rows identical after normalisation),
-    # key-based matching is trivially 1.0 for all pairs → arbitrary Hungarian
-    # assignment. Use value proximity instead so permuted points still score F1=1.0.
-    data_P = [m for m in P if m.row != "__meta__"]
-    data_T = [m for m in T if m.row != "__meta__"]
+    # Degenerate scatter: all data rows are ScatterRow with ≤1 series.
+    # MetaRows (chart_title) are excluded from this check — they are always
+    # matched via nl_tau regardless of the scatter_degenerate flag.
+    _p_data = [r for r in P if not isinstance(r, MetaRow)]
+    _t_data = [r for r in T if not isinstance(r, MetaRow)]
     scatter_degenerate = (
-        data_P and data_T
-        and all(isinstance(m.val, ScatterVal) for m in data_P + data_T)
-        and len({m.row for m in data_P}) <= 1
-        and len({m.row for m in data_T}) <= 1
+        bool(_p_data) and bool(_t_data)
+        and all(isinstance(r, ScatterRow) for r in _p_data + _t_data)
+        and len({r.series for r in _p_data}) <= 1
+        and len({r.series for r in _t_data}) <= 1
     )
 
-    # Key-similarity matrix (N × M)
+    # Key-similarity matrix (N x M)
     key_sim = np.zeros((N, M))
     for i, p in enumerate(P):
         for j, t in enumerate(T):
-            if isinstance(p.val, ScatterVal) and isinstance(t.val, ScatterVal):
-                if scatter_degenerate:
-                    key_sim[i, j] = 1.0 - d_theta_scatter(p.val, t.val, theta, ranges)
-                else:
-                    key_sim[i, j] = 1.0 - nl_tau(p.row, t.row, tau)
+            if scatter_degenerate and isinstance(p, ScatterRow) and isinstance(t, ScatterRow):
+                # entry_sim = (1-dx)*(1-dy): theta checked independently per axis.
+                # This is the same value used as pair_sim, so key_sim doubles as the
+                # assignment cost and the final similarity (no val_distance step).
+                key_sim[i, j] = _scatter_entry_sim(p, t, theta, ranges)
             else:
-                key_sim[i, j] = 1.0 - nl_tau(p.row + p.col, t.row + t.col, tau)
+                key_sim[i, j] = 1.0 - nl_tau(p.key(), t.key(), tau)
 
-    # Hungarian assignment: minimise cost = 1 − similarity
+    # Hungarian assignment
     row_ind, col_ind = linear_sum_assignment(1.0 - key_sim)
 
-    pair_sims = [entry_similarity(P[i], T[j], tau, theta, ranges)
-                 for i, j in zip(row_ind, col_ind)]
+    if scatter_degenerate:
+        # ScatterRow pairs: pair_sim encoded in key_sim, no second val_distance pass.
+        # MetaRow pairs: key_sim is nl_tau-based (key = field name), val_distance
+        # carries the actual title-value comparison — preserve it.
+        pair_sims = [
+            (key_sim[i, j] * (1.0 - val_distance(P[i], T[j], theta, ranges))
+             if isinstance(P[i], MetaRow)
+             else key_sim[i, j])
+            for i, j in zip(row_ind, col_ind)
+        ]
+    else:
+        pair_sims = [
+            key_sim[i, j] * (1.0 - val_distance(P[i], T[j], theta, ranges))
+            for i, j in zip(row_ind, col_ind)
+        ]
     total_sim = sum(pair_sims)
 
     precision = total_sim / N
     recall    = total_sim / M
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
-    pairs = list(zip(row_ind.tolist(), col_ind.tolist(), pair_sims))
 
-    return {"precision": precision, "recall": recall, "f1": f1,
-            "matched_sim": total_sim, "pairs": pairs}
+    return {
+        "precision": precision, "recall": recall, "f1": f1,
+        "matched_sim": total_sim,
+        "pairs": list(zip(row_ind.tolist(), col_ind.tolist(), pair_sims)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -99,47 +193,57 @@ def _rms_single(P: list[Mapping], T: list[Mapping], tau: float, theta: float,
 def compute_rms(
     predicted: dict,
     target: dict,
+    chart_type: str,
     tau: float = 0.5,
     theta: float = 0.1,
+    try_transpose: bool = False,
+    debug: bool = False,
 ) -> dict:
     """
     Compute RMS between two chart JSON dicts.
 
     Parameters
     ----------
-    predicted : dict   Model-predicted chart JSON.
-    target    : dict   Ground-truth chart JSON.
-    tau       : float  NL distance threshold (default 0.5).
-    theta     : float  Numeric distance threshold expressed as a fraction of
-                       the axis range (default 0.1).
+    predicted  : dict   Model-predicted chart JSON.
+    target     : dict   Ground-truth chart JSON.
+    chart_type : str    Chart type key (e.g. 'bar', 'scatter', 'box').
+    tau        : float  NL distance threshold (default 0.5).
+    theta      : float  Numeric distance threshold as fraction of axis range
+                        (default 0.1 = 10%).
+    try_transpose : bool  Try both series<->label orientations and return best.
+                          Enable only for DePlot. Default False.
+    debug      : bool   If True, add pred_rows, gt_rows, pred_table, gt_table.
 
     Returns
     -------
-    dict with keys:
-        precision, recall, f1  — best scores across orientations
-        orientation            — 'normal' or 'transposed' (scatter: always 'normal')
-        chart_type             — detected chart type
-        normal                 — scores for the normal orientation
-        transposed             — scores for the transposed orientation
+    dict: precision, recall, f1, orientation, chart_type, normal, transposed,
+          (optional debug keys)
     """
-    chart_type = _detect_chart_type(target)
-    ranges     = _extract_ranges(target, chart_type)
-    T_normal   = json_to_mappings(target, transpose=False, chart_type=chart_type)
+    from ..chart_types import get_parser  # deferred to avoid circular import
+    parser = get_parser(chart_type)
+    predicted_enriched = _inject_axis_meta(predicted, target)
+    T = parser.parse(target)
+    P = parser.parse(predicted_enriched)
+    ranges = parser.get_ranges(target)
 
-    # Scatter has no meaningful transposition; all other types do
-    orientations = [False] if chart_type == "scatter" else [False, True]
+    scatter_type = (chart_type == "scatter")
+
+    if scatter_type or not try_transpose:
+        orientations = [False]
+    else:
+        orientations = [False, True]
 
     results: dict = {}
     for transpose in orientations:
-        P   = json_to_mappings(predicted, transpose=transpose, chart_type=chart_type)
-        key = "transposed" if transpose else "normal"
-        results[key] = _rms_single(P, T_normal, tau, theta, ranges)
+        rows = _transpose_rows(P) if transpose else P
+        key  = "transposed" if transpose else "normal"
+        results[key] = _rms_single(rows, T, tau, theta, ranges, scatter_type)
 
     if "transposed" not in results:
         results["transposed"] = results["normal"]
 
     best = max(results, key=lambda k: results[k]["f1"])
-    return {
+    out = {
         "precision":   results[best]["precision"],
         "recall":      results[best]["recall"],
         "f1":          results[best]["f1"],
@@ -149,93 +253,10 @@ def compute_rms(
         "transposed":  results["transposed"],
     }
 
+    if debug:
+        out["pred_rows"]  = P
+        out["gt_rows"]    = T
+        out["pred_table"] = parser.show_table(predicted_enriched)
+        out["gt_table"]   = parser.show_table(target)
 
-def compute_rms_detailed(
-    predicted: dict,
-    target: dict,
-    tau: float = 0.5,
-    theta: float = 0.1,
-) -> dict:
-    """
-    Like compute_rms but also returns per-mapping match details for the best orientation.
-
-    Extra keys in the returned dict
-    --------------------------------
-    pairs         : list of {"gt": Mapping, "pred": Mapping, "similarity": float}
-    unmatched_gt  : list[Mapping] — GT data mappings with no prediction counterpart
-    unmatched_pred: list[Mapping] — predicted data mappings with no GT counterpart
-    meta_pairs    : list of {"gt": Mapping, "pred": Mapping, "similarity": float}
-    """
-    chart_type = _detect_chart_type(target)
-    ranges     = _extract_ranges(target, chart_type)
-    T_normal   = json_to_mappings(target, transpose=False, chart_type=chart_type)
-
-    orientations = [False] if chart_type == "scatter" else [False, True]
-
-    results:  dict = {}
-    P_by_key: dict = {}
-    for transpose in orientations:
-        P   = json_to_mappings(predicted, transpose=transpose, chart_type=chart_type)
-        key = "transposed" if transpose else "normal"
-        results[key]  = _rms_single(P, T_normal, tau, theta, ranges)
-        P_by_key[key] = P
-
-    if "transposed" not in results:
-        results["transposed"]  = results["normal"]
-        P_by_key["transposed"] = P_by_key["normal"]
-
-    best         = max(results, key=lambda k: results[k]["f1"])
-    P_best       = P_by_key[best]
-    best_result  = results[best]
-
-    def _is_meta(m: Mapping) -> bool:
-        return m.row == "__meta__"
-
-    matched_p: set[int] = set()
-    matched_t: set[int] = set()
-    data_pairs: list[dict] = []
-    meta_pairs: list[dict] = []
-
-    for pred_idx, gt_idx, sim in best_result["pairs"]:
-        t_m = T_normal[gt_idx]
-        p_m = P_best[pred_idx]
-        entry = {"gt": t_m, "pred": p_m, "similarity": sim}
-        if _is_meta(t_m) or _is_meta(p_m):
-            meta_pairs.append(entry)
-        else:
-            data_pairs.append(entry)
-        matched_p.add(pred_idx)
-        matched_t.add(gt_idx)
-
-    unmatched_gt   = [T_normal[j] for j in range(len(T_normal))
-                      if j not in matched_t and not _is_meta(T_normal[j])]
-    unmatched_pred = [P_best[i]   for i in range(len(P_best))
-                      if i not in matched_p and not _is_meta(P_best[i])]
-
-    return {
-        "precision":      results[best]["precision"],
-        "recall":         results[best]["recall"],
-        "f1":             results[best]["f1"],
-        "orientation":    best,
-        "chart_type":     chart_type,
-        "normal":         results["normal"],
-        "transposed":     results["transposed"],
-        "pairs":          data_pairs,
-        "unmatched_gt":   unmatched_gt,
-        "unmatched_pred": unmatched_pred,
-        "meta_pairs":     meta_pairs,
-    }
-
-
-def compute_rms_from_files(
-    predicted_path: str | Path,
-    target_path:    str | Path,
-    tau:   float = 0.5,
-    theta: float = 0.1,
-) -> dict:
-    """Load two JSON files and compute RMS."""
-    with open(predicted_path) as f:
-        predicted = json.load(f)
-    with open(target_path) as f:
-        target = json.load(f)
-    return compute_rms(predicted, target, tau=tau, theta=theta)
+    return out

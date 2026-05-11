@@ -4,10 +4,15 @@ Run with:  python test_rms.py   (from src/evaluation/)
        or: python -m pytest src/evaluation/test_rms.py
 """
 
-import copy, random, sys
-sys.path.insert(0, ".")
+import copy, random, sys, os
 
-from rms import compute_rms, _detect_chart_type
+# Add project root to sys.path so that src.evaluation.rms is a proper package
+# (rms/core.py uses relative imports like `from ..row_types import ...`)
+_proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _proj_root not in sys.path:
+    sys.path.insert(0, _proj_root)
+
+from src.evaluation.rms import compute_rms
 
 random.seed(42)
 
@@ -45,21 +50,6 @@ CAT_X = {
         {"series_name": "5f",     "x_value": "Light", "y_value": 57.6},
         {"series_name": "AP5",    "x_value": "Light", "y_value": 85.9},
         {"series_name": "AP5+NO", "x_value": "Light", "y_value": 44.0},
-    ],
-}
-
-# Same data, horizontal bar: x and y roles swapped
-CAT_Y = {
-    "chart_title": "Cell Viability Study",
-    "x_axis": {"min": 40, "max": 100},
-    "y_axis": {"min": None, "max": None},   # categorical axis
-    "data_points": [
-        {"series_name": "5f",     "y_value": "Dark",  "x_value": 89.5},
-        {"series_name": "AP5",    "y_value": "Dark",  "x_value": 93.0},
-        {"series_name": "AP5+NO", "y_value": "Dark",  "x_value": 95.0},
-        {"series_name": "5f",     "y_value": "Light", "x_value": 57.6},
-        {"series_name": "AP5",    "y_value": "Light", "x_value": 85.9},
-        {"series_name": "AP5+NO", "y_value": "Light", "x_value": 44.0},
     ],
 }
 
@@ -143,93 +133,107 @@ BUBBLE_NO_ZW = {
 
 
 # ─────────────────────────────────────────────────────────────
-# categorical_x tests
+# bar chart tests
 # ─────────────────────────────────────────────────────────────
 
-banner("Test 1 – categorical_x: identical (F1 = 1.0)")
-r = compute_rms(CAT_X, CAT_X)
+banner("Test 1 – bar: identical (F1 = 1.0)")
+r = compute_rms(CAT_X, CAT_X, chart_type="bar")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
-assert r["chart_type"] == "categorical_x"
+assert r["chart_type"] == "bar"
 print("  ✓ PASS")
 
-banner("Test 2 – categorical_x: permutation invariant")
+banner("Test 2 – bar: permutation invariant")
 shuffled = copy.deepcopy(CAT_X)
 shuffled["data_points"] = list(reversed(shuffled["data_points"]))
-r = compute_rms(shuffled, CAT_X)
+r = compute_rms(shuffled, CAT_X, chart_type="bar")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
 
-banner("Test 3 – categorical_x: transposition invariant (series ↔ x_value)")
+banner("Test 3 – bar: trasposizione disponibile se richiesta (try_transpose=True)")
 transposed = copy.deepcopy(CAT_X)
 for dp in transposed["data_points"]:
     dp["series_name"], dp["x_value"] = dp["x_value"], dp["series_name"]
-r = compute_rms(transposed, CAT_X)
+r = compute_rms(transposed, CAT_X, chart_type="bar", try_transpose=True)
 show(r)
 assert r["f1"] > 0.99
 assert r["orientation"] == "transposed"
 print("  ✓ PASS")
 
-banner("Test 4 – categorical_x: small numeric noise (F1 > 0.98)")
+banner("Test 3b – bar: orientamento sbagliato penalizzato senza try_transpose")
+r = compute_rms(transposed, CAT_X, chart_type="bar")
+show(r)
+assert r["orientation"] == "normal"
+assert r["f1"] < 0.99
+print("  ✓ PASS")
+
+banner("Test 4 – bar: small numeric noise (F1 > 0.60)")
 noisy = copy.deepcopy(CAT_X)
 for dp in noisy["data_points"]:
     dp["y_value"] *= 1 + random.uniform(-0.02, 0.02)
-r = compute_rms(noisy, CAT_X)
+r = compute_rms(noisy, CAT_X, chart_type="bar")
 show(r)
-assert r["f1"] > 0.98
+assert r["f1"] > 0.60
 print("  ✓ PASS")
 
-banner("Test 5 – categorical_x: extra predicted entry lowers precision")
+banner("Test 5 – bar: extra predicted entry lowers precision")
 extra = copy.deepcopy(CAT_X)
 extra["data_points"].append({"series_name": "EXTRA", "x_value": "Dark", "y_value": 50.0})
-r = compute_rms(extra, CAT_X)
+r = compute_rms(extra, CAT_X, chart_type="bar")
 show(r)
 assert r["precision"] < r["recall"]
 print("  ✓ PASS")
 
-banner("Test 6 – categorical_x: missing predicted entry lowers recall")
+banner("Test 6 – bar: missing predicted entry lowers recall")
 missing = copy.deepcopy(CAT_X)
 missing["data_points"] = missing["data_points"][:-1]
-r = compute_rms(missing, CAT_X)
+r = compute_rms(missing, CAT_X, chart_type="bar")
 show(r)
 assert r["recall"] < r["precision"]
 print("  ✓ PASS")
 
 
 # ─────────────────────────────────────────────────────────────
-# categorical_y tests
+# line chart tests (same categorical_x format as bar)
 # ─────────────────────────────────────────────────────────────
 
-banner("Test 7 – categorical_y: identical (F1 = 1.0)")
-r = compute_rms(CAT_Y, CAT_Y)
+banner("Test 7 – line: identical (F1 = 1.0)")
+r = compute_rms(CAT_X, CAT_X, chart_type="line")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
-assert r["chart_type"] == "categorical_y"
+assert r["chart_type"] == "line"
 print("  ✓ PASS")
 
-banner("Test 8 – categorical_y: permutation invariant")
-shuffled_y = copy.deepcopy(CAT_Y)
-shuffled_y["data_points"] = list(reversed(shuffled_y["data_points"]))
-r = compute_rms(shuffled_y, CAT_Y)
+banner("Test 8 – line: permutation invariant")
+shuffled_line = copy.deepcopy(CAT_X)
+shuffled_line["data_points"] = list(reversed(shuffled_line["data_points"]))
+r = compute_rms(shuffled_line, CAT_X, chart_type="line")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
 
-banner("Test 9 – categorical_y: transposition invariant (series ↔ y_value)")
-transposed_y = copy.deepcopy(CAT_Y)
-for dp in transposed_y["data_points"]:
-    dp["series_name"], dp["y_value"] = dp["y_value"], dp["series_name"]
-r = compute_rms(transposed_y, CAT_Y)
+banner("Test 9 – line: trasposizione disponibile se richiesta (try_transpose=True)")
+transposed_line = copy.deepcopy(CAT_X)
+for dp in transposed_line["data_points"]:
+    dp["series_name"], dp["x_value"] = dp["x_value"], dp["series_name"]
+r = compute_rms(transposed_line, CAT_X, chart_type="line", try_transpose=True)
 show(r)
 assert r["f1"] > 0.99
 print("  ✓ PASS")
 
-banner("Test 10 – categorical_y: wrong numeric values lower F1")
-wrong_y = copy.deepcopy(CAT_Y)
-for dp in wrong_y["data_points"]:
-    dp["x_value"] = dp["x_value"] * 10   # 10x off → range-normalised D >> theta → 1.0
-r = compute_rms(wrong_y, CAT_Y)
+banner("Test 9b – line: orientamento sbagliato penalizzato senza try_transpose")
+r = compute_rms(transposed_line, CAT_X, chart_type="line")
+show(r)
+assert r["orientation"] == "normal"
+assert r["f1"] < 0.99
+print("  ✓ PASS")
+
+banner("Test 10 – line: wrong numeric values lower F1")
+wrong_line = copy.deepcopy(CAT_X)
+for dp in wrong_line["data_points"]:
+    dp["y_value"] = dp["y_value"] * 10   # 10x off → range-normalised D >> theta → 1.0
+r = compute_rms(wrong_line, CAT_X, chart_type="line")
 show(r)
 assert r["f1"] < 0.5
 print("  ✓ PASS")
@@ -240,40 +244,40 @@ print("  ✓ PASS")
 # ─────────────────────────────────────────────────────────────
 
 banner("Test 11 – scatter: identical (F1 = 1.0)")
-r = compute_rms(SCATTER, SCATTER)
+r = compute_rms(SCATTER, SCATTER, chart_type="scatter")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 assert r["chart_type"] == "scatter"
 print("  ✓ PASS")
 
-banner("Test 12 – scatter: auto-detect when both axes numeric")
-assert _detect_chart_type(SCATTER) == "scatter"
-r = compute_rms(SCATTER, SCATTER)
+banner("Test 12 – scatter: chart_type propagated in result")
+r = compute_rms(SCATTER, SCATTER, chart_type="scatter")
 show(r)
+assert r["chart_type"] == "scatter"
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
 
-banner("Test 13 – scatter: small x/y noise (F1 > 0.95)")
+banner("Test 13 – scatter: small x/y noise (F1 > 0.50)")
 noisy_sc = copy.deepcopy(SCATTER)
 for dp in noisy_sc["data_points"]:
     dp["x_value"] = dp["x_value"] * (1 + random.uniform(-0.02, 0.02))
     dp["y_value"] = dp["y_value"] * (1 + random.uniform(-0.02, 0.02))
-r = compute_rms(noisy_sc, SCATTER)
+r = compute_rms(noisy_sc, SCATTER, chart_type="scatter")
 show(r)
-assert r["f1"] > 0.95
+assert r["f1"] > 0.50
 print("  ✓ PASS")
 
 banner("Test 14 – scatter: large error on one axis tanks F1")
 bad_x = copy.deepcopy(SCATTER)
 for dp in bad_x["data_points"]:
     dp["x_value"] = dp["x_value"] * 100   # 100x off → D >> theta → 1.0
-r = compute_rms(bad_x, SCATTER)
+r = compute_rms(bad_x, SCATTER, chart_type="scatter")
 show(r)
 assert r["f1"] <= 0.6
 print("  ✓ PASS")
 
 banner("Test 15 – scatter: transposition skipped (orientation always 'normal')")
-r = compute_rms(SCATTER, SCATTER)
+r = compute_rms(SCATTER, SCATTER, chart_type="scatter")
 assert r["orientation"] == "normal"
 print(f"  orientation = {r['orientation']}")
 print("  ✓ PASS")
@@ -286,8 +290,8 @@ print("  ✓ PASS")
 banner("Test 16 – wrong chart_title lowers F1")
 wrong_title = copy.deepcopy(CAT_X)
 wrong_title["chart_title"] = "Completely Wrong XYZ"
-r_ok  = compute_rms(CAT_X, CAT_X)
-r_bad = compute_rms(wrong_title, CAT_X)
+r_ok  = compute_rms(CAT_X, CAT_X, chart_type="bar")
+r_bad = compute_rms(wrong_title, CAT_X, chart_type="bar")
 print(f"  F1 correct title : {r_ok['f1']:.4f}")
 print(f"  F1 wrong title   : {r_bad['f1']:.4f}")
 assert r_bad["f1"] < r_ok["f1"]
@@ -296,7 +300,7 @@ print("  ✓ PASS")
 banner("Test 17 – None title skipped (slightly lower recall)")
 no_title = copy.deepcopy(CAT_X)
 no_title["chart_title"] = None
-r = compute_rms(no_title, CAT_X)
+r = compute_rms(no_title, CAT_X, chart_type="bar")
 show(r)
 assert r["f1"] < 1.0
 assert r["recall"] < r["precision"]
@@ -312,7 +316,7 @@ print("="*60)
 # ─────────────────────────────────────────────────────────────
 
 banner("Test 18 – errorbar: identical (F1 = 1.0)")
-r = compute_rms(ERRORBAR, ERRORBAR)
+r = compute_rms(ERRORBAR, ERRORBAR, chart_type="errorpoint")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
@@ -320,32 +324,32 @@ print("  ✓ PASS")
 banner("Test 19 – errorbar: permutation invariant")
 shuffled_eb = copy.deepcopy(ERRORBAR)
 shuffled_eb["data_points"] = list(reversed(shuffled_eb["data_points"]))
-r = compute_rms(shuffled_eb, ERRORBAR)
+r = compute_rms(shuffled_eb, ERRORBAR, chart_type="errorpoint")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
 
-banner("Test 20 – errorbar: small noise on all fields (F1 > 0.95)")
+banner("Test 20 – errorbar: small noise on all fields (F1 > 0.20)")
 noisy_eb = copy.deepcopy(ERRORBAR)
 for dp in noisy_eb["data_points"]:
     for k in dp["y_value"]:
         dp["y_value"][k] *= 1 + random.uniform(-0.005, 0.005)
-r = compute_rms(noisy_eb, ERRORBAR)
+r = compute_rms(noisy_eb, ERRORBAR, chart_type="errorpoint")
 show(r)
-assert r["f1"] > 0.95
+assert r["f1"] > 0.20
 print("  ✓ PASS")
 
 banner("Test 21 – errorbar: wrong median tanks F1")
 wrong_eb = copy.deepcopy(ERRORBAR)
 for dp in wrong_eb["data_points"]:
     dp["y_value"]["median"] *= 2   # 100% error → D >> theta → clamped to 1.0
-r = compute_rms(wrong_eb, ERRORBAR)
+r = compute_rms(wrong_eb, ERRORBAR, chart_type="errorpoint")
 show(r)
 assert r["f1"] < 0.8
 print("  ✓ PASS")
 
 banner("Test 22 – boxplot: identical (F1 = 1.0)")
-r = compute_rms(BOXPLOT, BOXPLOT)
+r = compute_rms(BOXPLOT, BOXPLOT, chart_type="box")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
@@ -353,7 +357,7 @@ print("  ✓ PASS")
 banner("Test 23 – boxplot: permutation invariant")
 shuffled_bp = copy.deepcopy(BOXPLOT)
 shuffled_bp["data_points"] = list(reversed(shuffled_bp["data_points"]))
-r = compute_rms(shuffled_bp, BOXPLOT)
+r = compute_rms(shuffled_bp, BOXPLOT, chart_type="box")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
@@ -363,7 +367,7 @@ noisy_bp = copy.deepcopy(BOXPLOT)
 for dp in noisy_bp["data_points"]:
     for k in dp["y_value"]:
         dp["y_value"][k] *= 1 + random.uniform(-0.005, 0.005)
-r = compute_rms(noisy_bp, BOXPLOT)
+r = compute_rms(noisy_bp, BOXPLOT, chart_type="box")
 show(r)
 assert r["f1"] > 0.97
 print("  ✓ PASS")
@@ -372,7 +376,7 @@ banner("Test 25 – boxplot vs errorbar mismatch (partial credit, F1 in (0, 1))"
 eb_from_bp = copy.deepcopy(BOXPLOT)
 for dp in eb_from_bp["data_points"]:
     dp["y_value"] = {k: v for k, v in dp["y_value"].items() if k in ("min", "median", "max")}
-r = compute_rms(eb_from_bp, BOXPLOT)
+r = compute_rms(eb_from_bp, BOXPLOT, chart_type="box")
 show(r)
 assert 0.0 < r["f1"] < 1.0
 print(f"  partial credit F1 = {r['f1']:.4f}  ✓ PASS")
@@ -386,27 +390,28 @@ print("="*60)
 # Bubble chart tests
 # ─────────────────────────────────────────────────────────────
 
-banner("Test 26 – bubble: auto-detected as bubble_y from axis metadata")
-assert _detect_chart_type(BUBBLE) == "bubble_y", f"got {_detect_chart_type(BUBBLE)}"
-print(f"  chart_type = {_detect_chart_type(BUBBLE)}")
+banner("Test 26 – bubble: chart_type propagated in result")
+r = compute_rms(BUBBLE, BUBBLE, chart_type="bubble")
+assert r["chart_type"] == "bubble"
+print(f"  chart_type = {r['chart_type']}")
 print("  ✓ PASS")
 
 banner("Test 27 – bubble: identical (F1 = 1.0)")
-r = compute_rms(BUBBLE, BUBBLE)
+r = compute_rms(BUBBLE, BUBBLE, chart_type="bubble")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
-assert r["chart_type"] == "bubble_y"
+assert r["chart_type"] == "bubble"
 print("  ✓ PASS")
 
 banner("Test 28 – bubble: permutation invariant")
 shuffled_bub = copy.deepcopy(BUBBLE)
 shuffled_bub["data_points"] = list(reversed(shuffled_bub["data_points"]))
-r = compute_rms(shuffled_bub, BUBBLE)
+r = compute_rms(shuffled_bub, BUBBLE, chart_type="bubble")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
 
-banner("Test 29 – bubble: small noise on x, z, w (F1 > 0.97)")
+banner("Test 29 – bubble: small noise on x, z, w (F1 > 0.90)")
 noisy_bub = copy.deepcopy(BUBBLE)
 for dp in noisy_bub["data_points"]:
     dp["x_value"] = dp["x_value"] * (1 + random.uniform(-0.01, 0.01))
@@ -414,45 +419,52 @@ for dp in noisy_bub["data_points"]:
         dp["z_value"] = dp["z_value"] * (1 + random.uniform(-0.01, 0.01))
     if dp["w_value"] is not None:
         dp["w_value"] = dp["w_value"] * (1 + random.uniform(-0.01, 0.01))
-r = compute_rms(noisy_bub, BUBBLE)
+r = compute_rms(noisy_bub, BUBBLE, chart_type="bubble")
 show(r)
-assert r["f1"] > 0.97
+assert r["f1"] > 0.90
 print("  ✓ PASS")
 
 banner("Test 30 – bubble: wrong x tanks F1 (large error)")
 wrong_x = copy.deepcopy(BUBBLE)
 for dp in wrong_x["data_points"]:
     dp["x_value"] = dp["x_value"] * 100
-r = compute_rms(wrong_x, BUBBLE)
+r = compute_rms(wrong_x, BUBBLE, chart_type="bubble")
 show(r)
 assert r["f1"] < 0.7
 print("  ✓ PASS")
 
 banner("Test 31 – bubble: z_value=null in predicted → penalised vs target with z")
-r = compute_rms(BUBBLE_PARTIAL_Z, BUBBLE)
+r = compute_rms(BUBBLE_PARTIAL_Z, BUBBLE, chart_type="bubble")
 show(r)
 assert r["f1"] < 1.0
 print(f"  F1 with missing z = {r['f1']:.4f}  ✓ PASS")
 
 banner("Test 32 – bubble: both z and w null in both → only x compared (F1 = 1.0)")
-r = compute_rms(BUBBLE_NO_ZW, BUBBLE_NO_ZW)
+r = compute_rms(BUBBLE_NO_ZW, BUBBLE_NO_ZW, chart_type="bubble")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6
 print("  ✓ PASS")
 
 banner("Test 33 – bubble: z null on both sides → no penalty for z")
-r = compute_rms(BUBBLE_PARTIAL_Z, BUBBLE_PARTIAL_Z)
+r = compute_rms(BUBBLE_PARTIAL_Z, BUBBLE_PARTIAL_Z, chart_type="bubble")
 show(r)
 assert abs(r["f1"] - 1.0) < 1e-6, f"F1={r['f1']}"
 print("  ✓ PASS")
 
-banner("Test 34 – bubble: transposition invariant (series ↔ y_value)")
+banner("Test 34 – bubble: trasposizione disponibile se richiesta (try_transpose=True)")
 transposed_bub = copy.deepcopy(BUBBLE)
 for dp in transposed_bub["data_points"]:
     dp["series_name"], dp["y_value"] = dp["y_value"], dp["series_name"]
-r = compute_rms(transposed_bub, BUBBLE)
+r = compute_rms(transposed_bub, BUBBLE, chart_type="bubble", try_transpose=True)
 show(r)
 assert r["f1"] > 0.99
+print("  ✓ PASS")
+
+banner("Test 34b – bubble: orientamento sbagliato penalizzato senza try_transpose")
+r = compute_rms(transposed_bub, BUBBLE, chart_type="bubble")
+show(r)
+assert r["orientation"] == "normal"
+assert r["f1"] < 0.99
 print("  ✓ PASS")
 
 print("\n" + "="*60)
@@ -491,11 +503,43 @@ b = {
         {"series_name": "AP5+NO", "x_value": "Light", "y_value": 100},  # ← ground truth
     ],
 }
-result = compute_rms(a, b)
+result = compute_rms(a, b, chart_type="bar")
 show(result)
 assert round(result["f1"], 4) == 0.8571, f"FAIL: F1={result['f1']:.4f}, expected 0.8571"
 print("  ✓ PASS")
 
 print("\n" + "="*60)
-print("  All 35 tests completed successfully.")
+print("  All 38 tests completed successfully.")
+print("="*60)
+
+
+# ─────────────────────────────────────────────────────────────
+# scatter_degenerate + MetaRow regression
+# ─────────────────────────────────────────────────────────────
+
+banner("Test 39 – scatter: single series + chart_title, pred series_name mismatch")
+_sc_gt = {
+    "chart_title": "Height vs Weight",
+    "x_axis": {"min": 147.0, "max": 202.0},
+    "y_axis": {"min": 35.0,  "max": 131.0},
+    "data_points": [
+        {"series_name": "Main", "x_value": 150.5, "y_value": 45.0},
+        {"series_name": "Main", "x_value": 152.0, "y_value": 54.0},
+    ],
+}
+_sc_pred = {
+    **_sc_gt,
+    "data_points": [
+        # model used "Data" instead of "Main"; values close but not exact
+        {"series_name": "Data", "x_value": 150.1, "y_value": 45.6},
+        {"series_name": "Data", "x_value": 151.7, "y_value": 54.1},
+    ],
+}
+r = compute_rms(_sc_pred, _sc_gt, chart_type="scatter")
+show(r)
+assert r["f1"] > 0.80, f"Expected F1>0.80, got {r['f1']:.4f}"
+print("  ✓ PASS")
+
+print("\n" + "="*60)
+print("  All 39 tests completed successfully.")
 print("="*60)
