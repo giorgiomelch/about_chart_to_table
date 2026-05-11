@@ -1,0 +1,6 @@
+# ninja log v7
+0	4635	7893164118843450	C:/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/build/temp.win-amd64-cpython-39/Release/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/src/cpu/ms_deform_attn_cpu.obj	832e7989ac2b0d40
+127	10196	7893164120090929	C:/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/build/temp.win-amd64-cpython-39/Release/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/src/vision.obj	618d005dcdc83e93
+0	5746	7893185280408767	C:/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/build/temp.win-amd64-cpython-39/Release/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/src/cpu/ms_deform_attn_cpu.obj	74ff0625990b0752
+126	10605	7893185281681563	C:/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/build/temp.win-amd64-cpython-39/Release/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/src/vision.obj	bf3ecbe23f6c45d6
+18	19900	7893185280587833	C:/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/build/temp.win-amd64-cpython-39/Release/Users/melch/Documents/GitHub/Deformable-DETR-main/models/ops/src/cuda/ms_deform_attn_cuda.obj	daef451c1717614f
