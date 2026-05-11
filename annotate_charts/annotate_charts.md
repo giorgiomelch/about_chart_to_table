@@ -1,0 +1,1 @@
+The annotation of bar, box, bubble, error point, histogram, line, radar, and scatter charts was performed using WebPlotDigitizer (\url{https://automeris.io/wpd/}).
