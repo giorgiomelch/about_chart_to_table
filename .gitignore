@@ -9,6 +9,7 @@
 *.html
 *.pth
 !deformable-detr-infer/checkpoints/checkpoint05.pth
+!chart_classifier/about_model/training_output/dice_1000.pth
 *.log
 *.pyc
 *.csv
