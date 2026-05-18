@@ -39,6 +39,8 @@ _data_base: Path = Path(_data_env) if _data_env else PROJECT_ROOT / "data"
 IMAGES_DIR = _data_base / "images"
 GROUNDTRUTH_DIR = _data_base / "groundtruth"
 
+DATASET_LIST = ["arXiv_synthetic", "PMCharts_synthetic", "arXiv", "PMCharts"]
+
 # --- Path di output e pesi (su Drive se disponibile, altrimenti locali) ---
 
 _out_base: Path = DRIVE_BASE_DIR if DRIVE_BASE_DIR is not None else PROJECT_ROOT
