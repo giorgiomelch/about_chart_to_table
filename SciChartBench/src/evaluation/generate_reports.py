@@ -33,6 +33,7 @@ from src.config import PREDICTIONS_DIR as PREDICTIONS_ROOT
 from src.config import GROUNDTRUTH_DIR as GROUNDTRUTH_ROOT
 from src.config import IMAGES_DIR as IMAGES_ROOT
 from src.config import REPORTS_DIR as REPORTS_ROOT
+from src.config import DATASET_LIST as DATASET_LIST
 
 _MODEL_PALETTE = [
     "#00d4ff",  # cyan
@@ -435,7 +436,7 @@ def generate_reports(chart_classes: list[str] | None = None) -> None:
         for m in model_names
     )
 
-    for dataset_type in ["arXiv", "PMCharts", "synthetic"]:
+    for dataset_type in DATASET_LIST:
         base_img_dir = IMAGES_ROOT / dataset_type
         if not base_img_dir.exists():
             continue

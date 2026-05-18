@@ -9,6 +9,7 @@ from src.evaluation.plot_results import salva_grafico_comparativo
 # --- CONFIGURAZIONE ---
 from src.config import PREDICTIONS_DIR as PREDICTIONS_ROOT
 from src.config import GROUNDTRUTH_DIR as GROUNDTRUTH_ROOT
+from src.config import DATASET_LIST as DATASET_LIST
 from src.config import IMAGES_DIR as IMAGES_ROOT
 
 # --- UTILS ---
@@ -366,7 +367,7 @@ def run_evaluation(suppress_warnings: bool = True):
         if suppress_warnings:
             warnings.simplefilter("ignore")
 
-        for dataset_type in ["arXiv","PMCharts", "synthetic"]:
+        for dataset_type in DATASET_LIST:
             print(f"\nAnalisi dataset: {dataset_type.upper()}...")
 
             img_base_dir = IMAGES_ROOT / dataset_type
