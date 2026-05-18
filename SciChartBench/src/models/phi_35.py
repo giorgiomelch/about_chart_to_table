@@ -95,7 +95,7 @@ def extract_table_phi(model, processor, image_path, prompt_text):
     ).to(model.device)
 
     generation_args = {
-        "max_new_tokens": 15_000,
+        "max_new_tokens": 3_000,
         "do_sample": False,
         "eos_token_id": processor.tokenizer.eos_token_id
     }
@@ -116,10 +116,11 @@ def extract_table_phi(model, processor, image_path, prompt_text):
 
     return response
 
-def run_batch_inference(model, processor, tier="3.5-Vision"):
-    input_base_dir = IMAGES_DIR
+def run_batch_inference(model, processor, tier="3.5-Vision", dataset_path=None):
+    input_base_dir = Path(dataset_path) if dataset_path is not None else IMAGES_DIR
+    dataset_name = input_base_dir.name if dataset_path is not None else ""
     output_base_dir = PREDICTIONS_DIR / f"Phi{tier}"
-    
+
     if not input_base_dir.exists():
         print(f"Errore: La directory di input {input_base_dir} non esiste sul tuo Drive.")
         print("Crea la cartella e inserisci le immagini prima di procedere.")
@@ -129,15 +130,24 @@ def run_batch_inference(model, processor, tier="3.5-Vision"):
 
     for img_path in input_base_dir.rglob("*"):
         if img_path.is_file() and img_path.suffix.lower() in valid_extensions:
-            
+
             relative_path = img_path.relative_to(input_base_dir)
-            json_output_path = output_base_dir / relative_path.with_suffix('.json')
-            
+            if dataset_path is not None:
+                json_output_path = output_base_dir / dataset_name / relative_path.with_suffix('.json')
+            else:
+                json_output_path = output_base_dir / relative_path.with_suffix('.json')
+
             if json_output_path.exists():
                 print(f"Skip: {json_output_path.name} (già processato).")
                 continue
-            
-            if len(relative_path.parts) >= 2:
+
+            if dataset_path is not None:
+                if len(relative_path.parts) >= 1:
+                    chart_class = relative_path.parts[0]
+                else:
+                    print(f"Attenzione: Impossibile determinare la classe per {relative_path}. Salto.")
+                    continue
+            elif len(relative_path.parts) >= 2:
                 chart_class = relative_path.parts[1]
             else:
                 print(f"Attenzione: Impossibile determinare la classe per {relative_path}. Salto.")
@@ -182,9 +192,9 @@ def run_batch_inference(model, processor, tier="3.5-Vision"):
                 }, indent=4, ensure_ascii=False)
                 json_output_path.write_text(critical_error_content, encoding="utf-8")
 
-def ask_phi(tier="3.5-Vision"):
+def ask_phi(tier="3.5-Vision", dataset_path=None):
     modello, processore = setup_phi_vision(tier=tier)
-    run_batch_inference(modello, processore, tier=tier)
+    run_batch_inference(modello, processore, tier=tier, dataset_path=dataset_path)
     print(f"\nPhi {tier}: inferenza batch completata.")
 
 if __name__ == "__main__":
