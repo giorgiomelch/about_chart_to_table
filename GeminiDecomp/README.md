@@ -1,108 +1,95 @@
 # GeminiDecomp
 
-Valutazione di **Gemini Flash 3** sul task di *compound figure separation*: dato un'immagine scientifica composta da più figure (grafici, tabelle, schemi), il modello deve localizzare e classificare ogni subfigura con un bounding box.
+Evaluation of **Gemini Flash 3** on the *compound figure separation* task: given a scientific image composed of multiple sub-figures (charts, tables, diagrams), the model must localise and classify each sub-figure with a bounding box.
 
-Le classi rilevate sono due:
-- **`chart`** — rappresentazioni di dati numerici (grafici a barre, scatter plot, istogrammi, curve, heatmap, ecc.)
-- **`non_chart`** — tutto il resto (tabelle, fotografie, schemi, flowchart, illustrazioni)
+Two detected classes:
+- **`chart`** — numeric data representations (bar charts, scatter plots, histograms, line plots, heatmaps, etc.)
+- **`non_chart`** — everything else (tables, photographs, diagrams, flowcharts, illustrations)
 
 ---
 
-## Cosa fa questo progetto
+## What this module does
 
-### 1. Valutazione delle performance (notebook principale)
+### 1. Performance evaluation (main notebook)
 
-`notebooks/evaluate_performance.ipynb` calcola Precision, Recall e F1 su un test set di **998 immagini** (piemmeci_test) al variare della soglia IoU da 0.1 a 0.95.
+`notebooks/evaluate_performance.ipynb` computes Precision, Recall and F1 on a test set of **998 images** (piemmeci_test) across IoU thresholds from 0.1 to 0.95.
 
-Risultati a IoU = 0.5:
+Results at IoU = 0.5:
 
-| Classe      | Precision | Recall | F1     |
-|-------------|-----------|--------|--------|
-| chart       | 0.9629    | 0.9535 | 0.9582 |
-| non_chart   | 0.9067    | 0.8829 | 0.8947 |
-| **all**     | **0.9458**| **0.9372** | **0.9415** |
+| Class | Precision | Recall | F1 |
+|-------|-----------|--------|----|
+| chart | 0.9629 | 0.9535 | 0.9582 |
+| non_chart | 0.9067 | 0.8829 | 0.8947 |
+| **all** | **0.9458** | **0.9372** | **0.9415** |
 
-mF1 medio su tutte le soglie IoU [0.1 → 0.95]: **0.8306**
+Mean F1 across all IoU thresholds [0.1 → 0.95]: **0.8306**
 
-Produce quattro grafici salvati in `results/`:
-- `metrics_vs_iou.png` — curve P/R/F1 al variare della soglia
-- `heatmap_f1.png` — heatmap F1 per classe × soglia IoU
-- `iou_histogram.png` — distribuzione degli IoU score sui match corretti (TP)
-- `pr_curve.png` — curva Precision-Recall parametrizzata per soglia IoU
+Produces four plots saved in `results/`:
+- `metrics_vs_iou.png` — P/R/F1 curves vs IoU threshold
+- `heatmap_f1.png` — F1 heatmap by class × IoU threshold
+- `iou_histogram.png` — distribution of IoU scores on correct matches (TP)
+- `pr_curve.png` — Precision-Recall curve parameterised by IoU threshold
 
-### 2. Visualizzazione errori
+### 2. COCO dataset 
 
-`notebooks/visualize_errors.ipynb` mostra le immagini in cui il modello ha sbagliato con bounding box colorati:
+Gemini's predictions on the full PMCimages corpus (~32,000 images) are converted to COCO format and are ready for training:
 
-| Colore   | Significato                        |
-|----------|------------------------------------|
-| Verde    | GT box rilevata correttamente (TP) |
-| Arancio  | GT box non rilevata (FN — missed)  |
-| Blu      | Predizione corretta (TP)           |
-| Rosso    | Predizione errata (FP — falso allarme) |
+- `data/coco_all.json` 
+- `data/annotations/instances_train.json` 
+- `data/annotations/instances_val.json` —
 
-### 3. Dataset COCO (~32K immagini)
+`notebooks/prepare_dataset.ipynb` documents the complete pipeline that generated these files (JSONL batch → COCO → train/val split).
 
-Le predizioni di Gemini su tutto il dataset PMCimages (~32.000 immagini) sono già convertite in formato COCO e pronte per il training:
+### 3. Running new batch predictions
 
-- `data/coco_all.json` — dataset completo (31.999 immagini, ~43 MB)
-- `data/annotations/instances_train.json` — 28.800 immagini (90%)
-- `data/annotations/instances_val.json` — 3.199 immagini (10%)
-
-`notebooks/prepare_dataset.ipynb` documenta il pipeline completo che ha generato questi file (JSONL batch → COCO → train/val split).
-
-### 4. Nuove predizioni batch
-
-Per rieseguire le predizioni su un nuovo set di immagini:
+To rerun predictions on a new set of images:
 
 ```bash
-export GEMINI_API_KEY="la_tua_chiave"
+export GEMINI_API_KEY="your_key"
 
 python scripts/run_batch_predictions.py \
     --input  /path/to/images \
     --output /path/to/results
 ```
 
-Lo script trova automaticamente le sottocartelle di primo livello in `--input`, lancia un batch job Gemini separato per ognuna, le monitora in parallelo e scarica i risultati. Se interrotto, riprende da dove si era fermato grazie a `_state.json`.
+The script automatically finds first-level sub-folders in `--input`, launches a separate Gemini batch job for each, monitors them in parallel and downloads the results. If interrupted, it resumes from where it stopped thanks to `_state.json`.
 
 ---
 
-## Struttura
+## Structure
 
 ```
 GeminiDecomp/
-├── config.py                        # path ai dati, classi, soglie IoU
-├── environment.yml                  # ambiente conda
+├── config.py                        # data paths, classes, IoU thresholds
+├── environment.yml                  # conda environment
 │
 ├── data/
-│   ├── ground_truth.json            # 998 annotazioni manuali (piemmeci_test)
-│   ├── gemini_predictions.json      # 998 predizioni Gemini (piemmeci_test)
-│   ├── coco_all.json                # dataset COCO completo (~32K immagini)
+│   ├── coco_all.json                # full COCO dataset (~32K images)
 │   └── annotations/
-│       ├── instances_train.json     # split train (90%)
-│       └── instances_val.json       # split val  (10%)
+│       ├── instances_train.json     # train split (90%)
+│       └── instances_val.json       # val split  (10%)
 │
-├── batch_predictions/               # JSONL raw delle predizioni Gemini su PMCimages
-│   └── batch_pred__NN.jsonl         # un file per ogni batch (~1000 immagini ciascuno)
+├── batch_predictions/               # raw JSONL predictions from Gemini on PMCimages
+│   └── batch_pred__NN.jsonl         # one file per batch (~1,000 images each)
 │
 ├── notebooks/
-│   ├── evaluate_performance.ipynb   # metriche + grafici
-│   ├── visualize_errors.ipynb       # visualizzazione FP/FN per immagine
-│   └── prepare_dataset.ipynb        # pipeline JSONL → COCO → train/val split
+│   ├── evaluate_performance.ipynb   # metrics + plots
+│   ├── visualize_errors.ipynb       # per-image FP/FN visualisation
+│   └── prepare_dataset.ipynb        # pipeline: JSONL → COCO → train/val split
 │
 ├── scripts/
-│   └── run_batch_predictions.py     # lancia predizioni batch su una cartella
+│   └── run_batch_predictions.py     # launch batch predictions on a folder
 │
 ├── src/
-│   ├── gemini_client.py             # client Gemini API (upload, batch job, download)
-│   ├── batch_pipeline.py            # wrapper alto livello per la pipeline batch
-│   ├── coco_converter.py            # conversione JSONL Gemini → formato COCO
-│   ├── data_loader.py               # carica GT e predizioni dal formato LabelStudio
+│   ├── gemini_client.py             # Gemini API client (upload, batch job, download)
+│   ├── batch_pipeline.py            # high-level wrapper for the batch pipeline
+│   ├── coco_converter.py            # Gemini JSONL → COCO format conversion
+│   ├── data_loader.py               # loads GT and predictions from LabelStudio format
 │   ├── iou_matching.py              # IoU + Hungarian matching (scipy)
-│   ├── metrics.py                   # Precision/Recall/F1, sweep IoU, mF1
-│   └── visualization.py             # tutti i grafici matplotlib/seaborn
+│   ├── metrics.py                   # Precision/Recall/F1, IoU sweep, mF1
+│   └── visualization.py             # all matplotlib/seaborn plots
 │
-└── results/                         # grafici generati dai notebook
+└── results/                         # plots generated by the notebooks
 ```
 
 ---
@@ -115,14 +102,14 @@ conda activate gemini_decomp
 jupyter notebook
 ```
 
-Per le predizioni batch serve anche la variabile d'ambiente `GEMINI_API_KEY`.
+Batch predictions also require the `GEMINI_API_KEY` environment variable.
 
 ---
 
-## Formato dati
+## Data formats
 
-**Ground truth / predizioni** (`data/*.json`): formato LabelStudio export, coordinate come percentuale (0–100) rispetto alle dimensioni originali dell'immagine.
+**Ground truth / predictions** (`data/*.json`): LabelStudio export format, coordinates as percentages (0–100) relative to the original image dimensions.
 
-**COCO** (`data/annotations/*.json`, `data/coco_all.json`): formato COCO standard, bounding box `[x, y, width, height]` in pixel assoluti. Categoria unica: `subimage` (id=0).
+**COCO** (`data/annotations/*.json`, `data/coco_all.json`): standard COCO format, bounding boxes as `[x, y, width, height]` in absolute pixels. Single category: `subimage` (id=0).
 
-**JSONL batch Gemini** (`batch_predictions/*.jsonl`): una riga per immagine, bbox nel formato `[ymin, xmin, ymax, xmax]` normalizzato su scala 0–1000.
+**Gemini batch JSONL** (`batch_predictions/*.jsonl`): one line per image, bounding boxes in `[ymin, xmin, ymax, xmax]` format normalised on a 0–1000 scale.
