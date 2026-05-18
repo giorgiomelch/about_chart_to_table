@@ -10,6 +10,9 @@
 *.pth
 !deformable-detr-infer/checkpoints/checkpoint05.pth
 !chart_classifier/about_model/training_output/dice_1000.pth
+!GeminiDecomp/data/ground_truth_testset.json
+!GeminiDecomp/data/PMC_images_testset_decompose_task/
+!GeminiDecomp/data/PMC_images_testset_decompose_task/*.jpg
 *.log
 *.pyc
 *.csv
