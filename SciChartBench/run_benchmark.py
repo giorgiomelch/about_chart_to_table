@@ -21,7 +21,7 @@ Modelli disponibili (API):
 
 Argomenti:
     --model       Modelli da eseguire (virgola-separati o "all"). Se omesso, nessuna inferenza viene eseguita.
-    --dataset     Dataset da usare: PMCharts, synthetic, arXiv, all (default: PMCharts)
+    --dataset     Dataset da usare: PMCharts, arXiv, arXiv_synthetic, PMCharts_synthetic, all (default: PMCharts)
     --tier        Variante del modello (es. 7B per Qwen, gpt-4o-mini per OpenAI)
     --drive-path  Path su Google Drive dove salvare pesi e output
     --data-path   Path della cartella data/ con images/ e groundtruth/ (utile su Colab)
@@ -35,7 +35,7 @@ import sys
 
 
 AVAILABLE_MODELS = ["qwen", "internvl", "phi", "deplot", "openai", "gemini"]
-AVAILABLE_DATASETS = ["PMCharts", "synthetic", "arXiv"]
+AVAILABLE_DATASETS = ["PMCharts", "arXiv_synthetic", "PMCharts_synthetic", "arXiv"]
 
 
 def parse_args():
@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument(
         "--dataset",
         default="PMCharts",
-        help='Dataset da usare, virgola-separati o "all". Es: PMCharts,synthetic',
+        help='Dataset da usare, virgola-separati o "all". Es: PMCharts,arXiv_synthetic',
     )
     parser.add_argument(
         "--tier",
@@ -148,18 +148,18 @@ def main():
             if model_name == "qwen":
                 from src.models.qwen import ask_qwen
                 tier = args.tier or "2B"
-                ask_qwen(tier=tier)
+                ask_qwen(tier=tier, dataset_path=str(dataset_path))
 
             elif model_name == "internvl":
                 from src.models.internVL import ask_internvl
                 tier = args.tier or "2.5-2B"
-                ask_internvl(tier=tier)
+                ask_internvl(tier=tier, dataset_path=str(dataset_path))
 
             elif model_name == "phi":
                 import importlib
                 phi_module = importlib.import_module("src.models.phi_35")
                 tier = args.tier or "3.5-Vision"
-                phi_module.ask_phi(tier=tier)
+                phi_module.ask_phi(tier=tier, dataset_path=str(dataset_path))
 
             elif model_name == "deplot":
                 from src.models.deplot import DePlot_predict
