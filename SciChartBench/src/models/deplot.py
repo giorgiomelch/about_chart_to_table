@@ -42,13 +42,14 @@ def process_image(percorso_immagine, file_output, model, processor, device):
 def pred_dir(dir, model, processor, device):
     path_to_dir = Path(dir)
     output_path = PREDICTIONS_DIR / "DePlot" / path_to_dir.name
+    allowed_classes = {'bar', 'line', 'histogram', 'pie'}
 
     if not path_to_dir.exists():
         print(f"Errore: Percorso {path_to_dir} non trovato.")
         return
 
     for chart_class in path_to_dir.iterdir():
-        if not chart_class.is_dir():
+        if not chart_class.is_dir() or chart_class.name.lower() not in allowed_classes:
             continue
         immagini = list(chart_class.iterdir())
         print(f"\n--- Elaborazione: {chart_class.name} ({len(immagini)} file) ---")
