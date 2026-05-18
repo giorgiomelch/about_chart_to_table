@@ -11,6 +11,7 @@ from openai import OpenAI
 from src.utils.prompts import PROMPT2CHARTCLASS
 from src.utils.schema_json import SCHEMA2CHARTCLASS
 from src.config import PREDICTIONS_DIR
+import time
 
 MAX_SIZE = 768
 
@@ -130,6 +131,7 @@ class ChartToTableProcessor:
                 schema = SCHEMA2CHARTCLASS.get(chart_class)
                 result = self.client.extract_data(prompt, img_bytes, schema)
                 self._save_json(result, output_file)
+                time.sleep(5) # per evitare rate limit
             except Exception as e:
                 print(f"Errore su {img_path.name}: {e}")
 
