@@ -19,7 +19,7 @@ chart_classifier/
 annotate_charts/
     Manually annotate ground-truth for 950 charts (10 categories)
             ↓
-SciChartBench/
+PaperUnPlotBench/
     Benchmark: 950 real charts + 950 synthetic charts
     Evaluate 8 models with the NMS metric
 ```
@@ -29,7 +29,7 @@ SciChartBench/
 ## Quick-start: running the benchmark
 
 ```bash
-cd SciChartBench
+cd PaperUnPlotBench
 
 # Inference with Gemini 2.5 Flash on real PMCharts
 python run_benchmark.py --model gemini --tier gemini-2.5-flash --dataset PMCharts
@@ -41,7 +41,7 @@ python run_benchmark.py --model qwen,internvl --dataset all --evaluate --report
 python run_benchmark.py --evaluate --metrics --report
 ```
 
-See [SciChartBench/README.md](SciChartBench/README.md) for full details.
+See [PaperUnPlotBench/README.md](PaperUnPlotBench/README.md) for full details.
 
 ---
 
@@ -61,7 +61,7 @@ about_chart_to_table/
 ├── deformable-detr-infer/        # Compound figure decomposition (DETR)
 ├── GeminiDecomp/                 # Gemini evaluation for decomposition
 ├── annotate_charts/              # Ground-truth annotation tools
-├── SciChartBench/                # Main benchmark
+├── PaperUnPlotBench/                # Main benchmark
 ```
 
 ---

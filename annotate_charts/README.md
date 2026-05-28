@@ -1,6 +1,6 @@
 # annotate_charts
 
-This folder contains the tools used to create the **ground-truth annotations** for the [SciChartBench](../SciChartBench/README.md) benchmark.
+This folder contains the tools used to create the **ground-truth annotations** for the [PaperUnPlotBench](../PaperUnPlotBench/README.md) benchmark.
 
 ---
 
