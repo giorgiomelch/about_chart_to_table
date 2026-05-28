@@ -27,19 +27,58 @@ _FAMILY_KEYWORDS = [
     ('gpt4o',       'gpt'),
     ('gpt-4o',      'gpt'),
     ('openai',      'gpt'),
+    ('gemini-2.5-flash', 'gemini'),
+    ('claude-sonnet-4-5', 'claude'),
+    ('Qwen2B',      'qwen'),
+    ('Phi3.5-Vision','phi'),
+    ('InternVL2.5-2B','internvl'),
+    ('DePlot',      'deplot'),
 ]
 
 # Color shades per family (dark → light, for sorted model order within family).
 _FAMILY_PALETTES: dict[str, list[str]] = {
-    'gpt': ['#1565C0', '#64B5F6'],   # deep blue → sky blue
+    'gpt': ["#008dff", "#003a7d"],
+    'gemini': ["#ff73b6"], 
+    'claude': ["#c701ff"],
+    'qwen': ["#4ecb8d"],
+    'phi': ["#ff9d3a"], 
+    'internvl': ["#f9e858"],
+    'internvl': ["#d83034"],   
+    'deplot': ["#7f7f7f"],  
 }
 
-# tab10 indices to use for models outside any defined family.
-# Skip index 0 (#1f77b4 blue) and 9 (#17becf cyan) to avoid clashing with GPT blues.
+_FAMILY_PALETTES2: dict[str, list[str]] = {
+    'gpt': ["#00b0be", "#8fd7d7"],
+    'gemini': ["#ff8ca1"], 
+    'claude': ["#f45f74"],
+    'deplot': ["#bdd373"],
+    'qwen': ["#98c127"], 
+    'phi': ["#ffcd8e"],
+    'internvl': ["#ffb255"],     
+}
+_FAMILY_PALETTES3: dict[str, list[str]] = {
+    'gpt': ["#f0c571", "#c8c8c8"],
+    'gemini': ["#59a89c"], 
+    'claude': ["#0b81a2"],
+    'deplot': ["#e25759"],
+    'qwen': ["#9d2c00"], 
+    'phi': ["#7E4794"],
+    'internvl': ["#36b700"],     
+}
+_FAMILY_PALETTES4: dict[str, list[str]] = {
+    'gpt': ["#1192e8", "#6929c4"],
+    'gemini': ["#005d5d"], 
+    'claude': ["#9f1853"],
+    'deplot': ["#fa4d56"],
+    'qwen': ["#570408"], 
+    'phi': ["#198038"],
+    'internvl': ["#002d9c"],     
+}
+
 _TAB10_FREE_INDICES = [1, 2, 3, 4, 5, 6, 7, 8]
 
 
-_DEPLOT_EDGE = ('#222222', 2.0)   # (edgecolor, linewidth) for DePlot bars
+_DEPLOT_EDGE = ('#222222', 2.0)
 
 CANONICAL_CHART_CLASSES = [
     'bar', 'box', 'bubble', 'errorpoint', 'heatmap',
@@ -70,7 +109,7 @@ def _build_color_map(model_names: list[str]) -> dict[str, str]:
     for m in sorted(model_names):
         lower = m.lower()
         for keyword, fam in _FAMILY_KEYWORDS:
-            if keyword in lower:
+            if keyword.lower() in lower:
                 family_members[fam].append(m)
                 break
 
@@ -195,7 +234,7 @@ def salva_grafico_comparativo(dati_f1, dataset_label):
 
     ax.legend(
         loc='upper left', bbox_to_anchor=(1.01, 1),
-        fontsize=10, title='Models', title_fontsize=11,
+        fontsize=15, title='Models', title_fontsize=11,
         frameon=True,
     )
     ax.set_ylim(bottom=0, top=105)
@@ -203,6 +242,6 @@ def salva_grafico_comparativo(dati_f1, dataset_label):
     ax.grid(axis='y', linestyle='--', alpha=0.5)
 
     output_path = METRICS_OUTPUT / f"f1_barplot_stdev_{dataset_label.lower()}.png"
-    plt.savefig(output_path, dpi=300)
+    plt.savefig(output_path, dpi=150)
     plt.close()
     print(f"Bar chart saved: {output_path}")
