@@ -11,7 +11,6 @@ The JSON must strictly adhere to the following structure:
     "chart_title": "Main title of the chart (null if absent)",
     "x_axis_label": "X-axis label (null if absent)",
     "y_axis_label": "Y-axis label (null if absent)",
-    "categorical_axis": "Specify which axis represents the categories (independent variable). Answer EXCLUSIVELY with the string 'x' or 'y'. If the chart does not have a categorical axis (e.g., scatter plot with two numerical axes), return null.",
     "data_points": [
         {
         "series_name": "Name of the series (e.g., legend entry). Use 'Main' if there is only one series without a legend.",
@@ -39,7 +38,7 @@ The JSON must strictly adhere to the following structure:
         {
         "series_name": "Name of the series (e.g., legend entry). Use 'Main' if there is only one series without a legend.",
         "x_value": "Category or numerical value on the X-axis.",
-        "y_value": "Numerical value on the Y-axis."
+        "y_value": "Category or numerical value on the Y-axis."
         }
     ]
 }
@@ -113,6 +112,8 @@ The JSON must strictly adhere to the following standardized structure, which ada
         }
     ]
 }
+If the chart is oriented vertically (categories on the X-axis, numeric values on the Y-axis), place the category in "x_value" and the statistical object in "y_value".
+If the chart is oriented horizontally (categories on the Y-axis, numeric values on the X-axis), place the statistical object in "x_value" and the category in "y_value".
 """
 
 PROMPT_Errorpoint = """
@@ -141,6 +142,8 @@ The JSON must strictly adhere to the following standardized structure, which ada
         }
     ]
 }
+If the chart is oriented vertically (categories on the X-axis, numeric values on the Y-axis), place the category in "x_value" and the statistical object in "y_value".
+If the chart is oriented horizontally (categories on the Y-axis, numeric values on the X-axis), place the statistical object in "x_value" and the category in "y_value".
 """
 
 PROMPT_Bubble = """
