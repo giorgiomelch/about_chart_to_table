@@ -1,10 +1,14 @@
 # PaperUnPlotBench
 
+This is the official repository for the paper accepted at TaDA 2026 (VLDB Workshops): [TaDA26_13](https://vldb.org/2026/Workshops/VLDB-Workshops-2026/TaDA/TaDA26_13.pdf).
+
 The main benchmark of the project: **950 real charts** extracted from scientific literature (PMC + arXiv) paired with **950 synthetic charts** (one-to-one correspondence), organised into 10 categories, with ground-truth annotations and an evaluation pipeline for 8 models.
 
 ---
 
 ## Dataset
+
+The compressed data archive (`data.7z`) is password-protected. To obtain the password, contact melchiorrigiorgio@gmail.com.
 
 ### Composition
 
