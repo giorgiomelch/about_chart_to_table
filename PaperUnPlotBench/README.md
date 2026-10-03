@@ -1,6 +1,6 @@
 # PaperUnPlotBench
 
-This is the official repository for the paper accepted at TaDA 2026 (VLDB Workshops): [TaDA26_13](https://vldb.org/2026/Workshops/VLDB-Workshops-2026/TaDA/TaDA26_13.pdf).
+This is the official repository for the paper "PaperUnPlot: Benchmarking Chart-to-Table in the Wild" accepted at TaDA 2026 (VLDB Workshops): [PaperUnPlot: Benchmarking Chart-to-Table in the Wild](https://vldb.org/2026/Workshops/VLDB-Workshops-2026/TaDA/TaDA26_13.pdf).
 
 The main benchmark of the project: **950 real charts** extracted from scientific literature (PMC + arXiv) paired with **950 synthetic charts** (one-to-one correspondence), organised into 10 categories, with ground-truth annotations and an evaluation pipeline for 8 models.
 
