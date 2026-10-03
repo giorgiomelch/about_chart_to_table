@@ -1,5 +1,7 @@
 # about_chart_to_table
 
+This is the official repository for the paper "PaperUnPlot: Benchmarking Chart-to-Table in the Wild" accepted at TaDA 2026 (VLDB Workshops): [PaperUnPlot: Benchmarking Chart-to-Table in the Wild](https://vldb.org/2026/Workshops/VLDB-Workshops-2026/TaDA/TaDA26_13.pdf).
+
 The goal of the work is to study the real-world distribution of chart types in scientific literature (PubMed Central and arXiv), build a representative benchmark for the **chart-to-table extraction** task, and evaluate state-of-the-art vision-language models (LVLMs) on it.
 
 ---
